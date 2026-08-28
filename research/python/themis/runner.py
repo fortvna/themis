@@ -8,9 +8,10 @@ from typing import Any
 
 import pandas as pd
 
+from themis.ask import AskError, run_ask
 from themis.data import SeriesLoad, load_from_spec
 from themis.eligibility import evaluate
-from themis.paths import repo_root, runs_dir
+from themis.paths import python_dir, repo_root, runs_dir
 from themis.report import write_report
 from themis.spec import SpecError, dump_yaml, load_spec
 
@@ -55,7 +56,9 @@ def _max_dd(equity: list[float]) -> float:
 
 
 def _swing_trades(df: pd.DataFrame, n: int, pct_low: float, pct_high: float, commission: float) -> pd.DataFrame:
+    """Next-open fill after zone touch. Stop origin, target extreme. Optimistic 4h OHLC."""
     from themis.ask import fractals
+
     sh, sl = fractals(df, n)
     trades = []
     used: set[int] = set()
@@ -101,8 +104,23 @@ def _swing_trades(df: pd.DataFrame, n: int, pct_low: float, pct_high: float, com
                     break
         if exit_px is None:
             exit_px = float(closes[-1])
-        pnl = (exit_px - entry - cost) if side == "long" else (entry - exit_px - cost)
-        trades.append({"side": side, "entry_ts": str(idx[entry_i]), "exit_ts": str(idx[exit_i]), "entry": entry, "exit": exit_px, "origin": origin, "extreme": extreme, "why": why, "pnl": pnl})
+        if side == "long":
+            pnl = exit_px - entry - cost
+        else:
+            pnl = entry - exit_px - cost
+        trades.append(
+            {
+                "side": side,
+                "entry_ts": str(idx[entry_i]),
+                "exit_ts": str(idx[exit_i]),
+                "entry": entry,
+                "exit": exit_px,
+                "origin": origin,
+                "extreme": extreme,
+                "why": why,
+                "pnl": pnl,
+            }
+        )
 
     for hi in sh:
         knowable = hi + n
@@ -173,8 +191,15 @@ def run_strategy(spec_path: str | Path, *, root: Path | None = None, network: bo
     el = evaluate(series.n_bars, costs_written=True, search_space=spec.get("search_space") or None)
     if not el.run_ok:
         raise RunError(el.refuse_message("run"))
+    if spec.get("run_eligible") is False and not thin:
+        raise RunError(
+            f"run_eligible is false; pass --thin to execute. kept still impossible. "
+            f"actual n_bars={series.n_bars} thin={el.thin}"
+        )
     if el.thin and not thin:
-        raise RunError(f"run on this series is thin (n_bars={series.n_bars} < 4000). pass --thin to execute. kept still impossible.")
+        raise RunError(
+            f"run on this series is thin (n_bars={series.n_bars} < 4000). pass --thin to execute. kept still impossible."
+        )
     _require_ask_folders(spec, root)
     n = int(spec.get("fractal_n") or 5)
     pct_low = float(spec.get("pct_low") or 0.618)
@@ -191,11 +216,38 @@ def run_strategy(spec_path: str | Path, *, root: Path | None = None, network: bo
             running += x
             equity.append(running)
     dd = _max_dd(equity)
-    metrics = {"kind": "strategy", "spec_id": spec["id"], "n_trades": int(len(trades)), "pnl": round(pnl, 6), "net_return": round(net_return, 6), "max_drawdown_pct": dd, "thin": el.thin, "kept_possible": False if el.thin else el.kept_ok, "not_modeled": NOT_MODELED, "not_computed": NOT_COMPUTED, "execution_ready": False, "note": "placeholder costs. not a live claim. 4h SL/TP from OHLC is optimistic.", "identity": series.identity}
+    metrics = {
+        "kind": "strategy",
+        "spec_id": spec["id"],
+        "n_trades": int(len(trades)),
+        "pnl": round(pnl, 6),
+        "net_return": round(net_return, 6),
+        "max_drawdown_pct": dd,
+        "thin": el.thin,
+        "kept_possible": False if el.thin else el.kept_ok,
+        "not_modeled": NOT_MODELED,
+        "not_computed": NOT_COMPUTED,
+        "execution_ready": False,
+        "note": "placeholder costs. not a live claim. 4h SL/TP from OHLC is optimistic.",
+        "identity": series.identity,
+    }
     folder = runs_dir(root) / f"{_stamp()}-{spec['id']}-{spec['id'][-8:] if len(spec['id'])>=8 else spec['id']}"
     folder.mkdir(parents=True, exist_ok=True)
     dump_yaml(spec, folder / "spec.yaml")
-    meta = {"kind": "strategy", "stage": stage, "execution_ready": False, "spec_id": spec["id"], "actual_start": series.actual_start, "actual_end": series.actual_end, "n_bars": series.n_bars, "provider": series.provider, "source": series.source, "symbol": series.symbol, "thin": el.thin, "family": spec.get("family")}
+    meta = {
+        "kind": "strategy",
+        "stage": stage,
+        "execution_ready": False,
+        "spec_id": spec["id"],
+        "actual_start": series.actual_start,
+        "actual_end": series.actual_end,
+        "n_bars": series.n_bars,
+        "provider": series.provider,
+        "source": series.source,
+        "symbol": series.symbol,
+        "thin": el.thin,
+        "family": spec.get("family"),
+    }
     if series.symbol in ("SPYUSDT", "QQQUSDT"):
         meta["product"] = "etf_perp"
         meta["not"] = "not ES" if series.symbol == "SPYUSDT" else "not NQ"
@@ -255,16 +307,19 @@ def walkforward(spec_path: str | Path, *, root: Path | None = None, network: boo
 def tune(spec_path: str | Path, *, root: Path | None = None, network: bool = True) -> Path:
     spec = load_spec(spec_path)
     space = spec.get("search_space") or {}
-    if not space:
-        raise RunError("tune: empty search_space errors")
     root = root or repo_root()
     series = load_from_spec(spec, root=root, network=network)
-    el = evaluate(series.n_bars, costs_written=True, search_space=space)
-    if not el.tune_ok:
+    el = evaluate(series.n_bars, costs_written=True, search_space=space or None)
+    if not el.walkforward_ok or not el.tune_ok:
         msg = el.refuse_message("tune")
         if series.symbol in ("XAUUSDT", "SPYUSDT", "QQQUSDT") or el.thin:
             msg += " Point at BTC/SOL as the series that can tune the same family when bars clear the floor."
         raise RunError(msg)
+    if not space:
+        raise RunError(
+            f"tune: empty search_space errors. actual n_bars={series.n_bars} "
+            f"walkforward floor n_bars >= 4000"
+        )
     raise RunError("tune stub: walkforward_eligible but candidate expansion is a later pass")
 
 
@@ -299,12 +354,23 @@ def compare(family: str, *, root: Path | None = None) -> Path:
             continue
         if meta.get("stage") not in ("discovery", None):
             continue
-        rows.append({"run": p.name, "spec_id": meta.get("spec_id"), "n_bars": meta.get("n_bars"), "thin": meta.get("thin"), "n_trades": metrics.get("n_trades"), "net_return": metrics.get("net_return"), "pnl": metrics.get("pnl"), "max_drawdown_pct": metrics.get("max_drawdown_pct")})
+        row = {
+            "run": p.name,
+            "spec_id": meta.get("spec_id"),
+            "n_bars": meta.get("n_bars"),
+            "thin": meta.get("thin"),
+            "n_trades": metrics.get("n_trades"),
+            "net_return": metrics.get("net_return"),
+            "pnl": metrics.get("pnl"),
+            "max_drawdown_pct": metrics.get("max_drawdown_pct"),
+        }
+        rows.append(row)
     if not rows:
         raise RunError(f"no discovery strategy runs for family {family}")
     folder = runs_dir(root) / f"{_stamp()}-compare-{family}"
     folder.mkdir(parents=True, exist_ok=True)
-    pd.DataFrame(rows).to_csv(folder / "table.csv", index=False)
+    table = pd.DataFrame(rows)
+    table.to_csv(folder / "table.csv", index=False)
     note = "compare lists discovery runs. does not claim validation."
     if not wf_eligible:
         note += " walkforward_eligible is false: do not claim best on this family."
