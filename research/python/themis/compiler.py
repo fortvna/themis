@@ -10,6 +10,7 @@ from typing import Any
 from themis import auth
 from themis.paths import jobs_dir, questions_dir, repo_root, specs_dir
 from themis.spec import dump_yaml
+from themis.live import compile_live, CompileError as LiveCompileError
 
 SCHEMA = "themis.job.v1"
 GATES = {
@@ -349,12 +350,14 @@ def compile_english(
     if backend not in ("mock", "xai", "openai"):
         raise CompileError(f"unknown backend {backend}")
     if backend != "mock":
-        if not auth.is_logged_in(backend):
-            raise CompileError(f"not logged in for {backend}. themis login {backend}. no fallback to mock.")
-        raise CompileError(
-            f"live compile backend={backend} is logged in as stub but live compile is not released. "
-            "no model call. no spend. use --backend mock until Amir leaves mock."
-        )
+        try:
+            auth.require_login(backend)
+        except auth.AuthError as e:
+            raise CompileError(str(e)) from e
+        try:
+            return compile_live(english, series, backend=backend, media=media, write=write, root=root)
+        except LiveCompileError as e:
+            raise CompileError(str(e)) from e
 
     media_status = []
     if media:
