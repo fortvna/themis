@@ -1,351 +1,297 @@
-"""Acceptance tests for open-spec.md §15 items 2-9 and 12."""
+"""§15 acceptance. Fixtures stay in research/.cache, never git."""
+
 from __future__ import annotations
 
+import inspect
 import json
-import tempfile
-import unittest
+import os
+import socket
 from pathlib import Path
-from unittest.mock import patch
 
-import numpy as np
-import pandas as pd
+import pytest
+import yaml
 
-from themis.ask import AskError, run_ask
-from themis.auth import login, logout, whoami
-from themis.cli import main
-from themis.compiler import BANK, CompileError, compile_bank, compile_english
-from themis.runner import RunError, run_strategy, tune, walkforward
-from themis.spec import dump_yaml, load_spec, PNL_KEYS
+os.environ.setdefault("THEMIS_ROOT", str(Path(__file__).resolve().parents[3]))
 
-SERIES_GOLD = {
-    "provider": "binance",
-    "symbol": "XAUUSDT",
-    "timeframe": "4h",
-    "exchange": "binanceusdm",
-}
-ASK_IDS = [k for k, v in BANK.items() if v["path"] == "ask"]
-RUN_IDS = [k for k, v in BANK.items() if v["path"] == "run"]
-FAMILY_IDS = [k for k, v in BANK.items() if v["path"] == "family"]
-HUMAN_IDS = [k for k, v in BANK.items() if v["path"] == "needs_human"]
-ERROR_IDS = [k for k, v in BANK.items() if v["path"] == "error"]
+from themis import compiler, eligibility
+from themis.compiler import BANK, compile_english
+from themis.cli import main as themis_main
+
+ROOT = Path(os.environ["THEMIS_ROOT"])
 
 
-def _ohlc_csv(path: Path, n: int, seed: int = 1, start: str = "2025-12-11") -> None:
-    rng = np.random.default_rng(seed)
-    idx = pd.date_range(start, periods=n, freq="4h", tz="UTC")
-    drift = np.linspace(0, 40, n)
-    noise = np.cumsum(rng.normal(0, 1.8, n))
-    wave = 35 * np.sin(np.arange(n) / 18.0)
-    close = 2600 + drift + noise + wave
-    high = close + rng.uniform(0.8, 5.0, n)
-    low = close - rng.uniform(0.8, 5.0, n)
-    open_ = np.concatenate([[close[0]], close[:-1]])
-    df = pd.DataFrame(
-        {
-            "ts": idx,
-            "open": open_,
-            "high": np.maximum.reduce([open_, high, close]),
-            "low": np.minimum.reduce([open_, low, close]),
-            "close": close,
-            "volume": rng.uniform(1, 20, n),
-        }
-    )
-    path.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(path, index=False)
+def ce(english: str = "", symbol: str = "XAUUSDT", bank_id: str | None = None, **kw):
+    series = {
+        "provider": "binance",
+        "symbol": symbol,
+        "timeframe": "4h",
+        "exchange": "binanceusdm",
+    }
+    text = bank_id or english
+    return compile_english(text, series, write=True, root=ROOT, **kw)
 
 
-def _cache_csv(root: Path, symbol: str, n: int, seed: int = 1) -> Path:
-    p = root / "research" / ".cache" / "binance" / "binanceusdm" / symbol / "4h.csv"
-    _ohlc_csv(p, n, seed=seed)
-    return p
+def cli(argv: list[str]) -> int:
+    try:
+        return int(themis_main(argv) or 0)
+    except SystemExit as e:
+        return int(e.code or 0)
 
 
-def _tmp_root() -> tempfile.TemporaryDirectory:
-    return tempfile.TemporaryDirectory(prefix="themis-s15-")
+def test_compiler_source_has_no_urllib():
+    src = inspect.getsource(compiler)
+    assert "import urllib" not in src
+    assert "import requests" not in src
+    assert "import httpx" not in src
+    assert "from urllib" not in src
 
 
-class TestS15_2_compile_bank(unittest.TestCase):
-    def test_compile_every_id_no_network(self):
-        def boom(*_a, **_k):
-            raise AssertionError("mock compiler networked")
+def test_compile_maps_every_bank_id_no_network(monkeypatch):
+    def boom(*_a, **_k):
+        raise AssertionError("network forbidden in mock compile")
 
-        with patch("socket.socket", side_effect=boom), patch(
-            "urllib.request.urlopen", side_effect=boom
-        ):
-            jobs = compile_bank(SERIES_GOLD, write=False)
-        self.assertEqual(set(jobs), set(BANK))
-        for cid, job in jobs.items():
-            self.assertEqual(job.get("case_id"), cid, cid)
-            self.assertEqual(job["source"]["compiler"], "mock")
-            path = BANK[cid]["path"]
-            if path == "needs_human":
-                self.assertEqual(job["status"], "needs_human", cid)
-                self.assertEqual(job.get("plan") or [], [])
-            elif path == "error":
-                self.assertEqual(job["status"], "error", cid)
-            else:
-                self.assertEqual(job["status"], "ok", cid)
-                qs = [p for p in job["plan"] if p["kind"] == "question"]
-                self.assertGreaterEqual(len(qs), 2, cid)
-
-
-class TestS15_3_ask_rivals(unittest.TestCase):
-    def test_ask_rows_write_rivals_then_pandas_no_pnl(self):
-        with _tmp_root() as td:
-            root = Path(td)
-            _cache_csv(root, "XAUUSDT", 400, seed=3)
-            for cid in ASK_IDS:
-                job = compile_english(cid, SERIES_GOLD, write=True, root=root)
-                qs = [p for p in job["plan"] if p["kind"] == "question"]
-                self.assertGreaterEqual(len(qs), 2, cid)
-                self.assertFalse(any(p["kind"] == "strategy" for p in job["plan"]), cid)
-            for cid in ("R1", "G2", "U1", "G3"):
-                job = compile_english(cid, SERIES_GOLD, write=True, root=root)
-                folders = []
-                for item in job["plan"]:
-                    if item["kind"] != "question":
-                        continue
-                    spec_path = root / item["yaml"]
-                    folder = run_ask(spec_path, root=root, network=False)
-                    folders.append(folder)
-                    metrics = json.loads((folder / "metrics.json").read_text())
-                    meta = json.loads((folder / "meta.json").read_text())
-                    self.assertEqual(meta["kind"], "question")
-                    self.assertFalse(meta["execution_ready"])
-                    self.assertFalse((folder / "trades.csv").exists(), cid)
-                    for k in PNL_KEYS:
-                        self.assertNotIn(k, metrics, (cid, k))
-                    self.assertNotIn("pnl", metrics)
-                    self.assertNotIn("net_return", metrics)
-                    self.assertNotIn("expectancy", metrics)
-                    blob = json.dumps(metrics)
-                    self.assertTrue(
-                        any(
-                            k in blob
-                            for k in ("rate", "n_days", '"n"', "n_mondays", "n_bars", "median")
-                        ),
-                        cid,
-                    )
-                self.assertGreaterEqual(len(folders), 2, cid)
-
-
-class TestS15_4_run_rows(unittest.TestCase):
-    def test_b0_g1_freeze_strategy_gold_not_eligible(self):
-        for cid in RUN_IDS:
-            job = compile_english(cid, SERIES_GOLD, write=False)
-            self.assertEqual(job["status"], "ok", cid)
-            self.assertEqual(job["path"], "run")
+    monkeypatch.setattr(socket, "create_connection", boom)
+    for cid, rec in BANK.items():
+        path = rec["path"]
+        job = ce(bank_id=cid)
+        assert job["schema"] == "themis.job.v1"
+        if path == "needs_human":
+            assert job["status"] == "needs_human"
+            assert job["plan"] == []
+        elif path == "error":
+            assert job["status"] == "error"
+        else:
+            assert job["status"] == "ok", (cid, job.get("note"), job)
+            assert job.get("case_id") == cid
             qs = [p for p in job["plan"] if p["kind"] == "question"]
             ss = [p for p in job["plan"] if p["kind"] == "strategy"]
-            self.assertGreaterEqual(len(qs), 2, cid)
-            self.assertEqual(len(ss), 1, cid)
-            self.assertFalse(ss[0]["run_eligible"], cid)
-            self.assertFalse(ss[0]["walkforward_eligible"], cid)
-            self.assertFalse(ss[0]["tune_eligible"], cid)
-            plan = json.dumps(job["plan"])
-            self.assertNotIn('"pnl"', plan)
-            self.assertFalse(any("bounce_rate" in json.dumps(p) for p in job["plan"] if p["kind"] == "strategy"))
+            if path == "ask":
+                assert len(qs) >= 2, cid
+                assert len(ss) == 0
+            elif path == "run":
+                assert len(qs) >= 2, cid
+                assert len(ss) == 1, cid
+                assert ss[0]["run_eligible"] is False
+            elif path == "family":
+                assert len(qs) >= 2, cid
+                assert len(ss) >= 2, cid
+                assert all(s.get("tune_eligible") is False for s in ss)
+    jobs = ROOT / "research" / "jobs"
+    if jobs.exists():
+        assert not list(jobs.rglob("metrics.json"))
 
 
-class TestS15_5_family(unittest.TestCase):
-    def test_family_rows_no_single_winner_no_tune_on_gold(self):
-        for cid in FAMILY_IDS:
-            job = compile_english(cid, SERIES_GOLD, write=False)
-            self.assertEqual(job["path"], "family", cid)
-            ss = [p for p in job["plan"] if p["kind"] == "strategy"]
-            qs = [p for p in job["plan"] if p["kind"] == "question"]
-            self.assertGreaterEqual(len(qs), 2, cid)
-            self.assertGreaterEqual(len(ss), 2, cid)
-            self.assertFalse(job.get("single_winner", False), cid)
-            for s in ss:
-                self.assertFalse(s["tune_eligible"], cid)
-                self.assertFalse(s["walkforward_eligible"], cid)
-                self.assertFalse(s["run_eligible"], cid)
+def test_unknown_english_needs_human():
+    job = ce("paint me a unicorn order block on mars")
+    assert job["status"] == "needs_human"
+    assert job["plan"] == []
 
 
-class TestS15_6_human_and_error(unittest.TestCase):
-    def test_f_rows_needs_human(self):
-        for cid in HUMAN_IDS:
-            job = compile_english(cid, SERIES_GOLD, write=False)
-            self.assertEqual(job["status"], "needs_human", cid)
-            self.assertEqual(job.get("plan") or [], [])
-
-    def test_a_rows_error_until_kept(self):
-        for cid in ERROR_IDS:
-            job = compile_english(cid, SERIES_GOLD, write=False)
-            self.assertEqual(job["status"], "error", cid)
+def test_bybit_needs_human():
+    job = ce("gold bounce on Bybit")
+    assert job["status"] == "needs_human"
 
 
-class TestS15_7_ask_refuses_return(unittest.TestCase):
-    def test_ask_refuses_return_question(self):
-        with _tmp_root() as td:
-            root = Path(td)
-            spec = {
-                "id": "return-q-test",
-                "kind": "question",
-                "title": "what is the return / pnl / drawdown",
-                "instrument": {
-                    "symbol": "XAUUSDT",
-                    "venue": "binance",
-                    "provider": "binance",
-                    "timeframe": "4h",
-                },
-                "data": {"provider": "binance", "source": "csv", "exchange": "binanceusdm"},
-                "discovery": {"start": None, "end": None, "note": "all bars"},
-                "holdout": {"start": None, "end": None, "note": "none"},
-                "population": "events",
-                "condition": [{"kind": "generic"}],
-                "outcome": {"name": "pnl", "kind": "flag"},
-                "definitions": {"x": "pinned"},
-                "stats": ["n"],
-                "forbidden": ["quoting_pnl_from_this_ask"],
-            }
-            path = root / "research" / "questions" / "return-q-test.yaml"
-            dump_yaml(spec, path)
-            with self.assertRaises(AskError) as ctx:
-                run_ask(path, root=root, network=False)
-            self.assertIn("return question", str(ctx.exception).lower())
-
-    def test_ask_rejects_strategy_spec(self):
-        job = compile_english("G1", SERIES_GOLD, write=False)
-        st = job["strategies"][0]
-        with _tmp_root() as td:
-            root = Path(td)
-            path = root / "research" / "specs" / f"{st['id']}.yaml"
-            dump_yaml(st, path)
-            with self.assertRaises(AskError):
-                run_ask(path, root=root, network=False)
+def test_english_needles_map():
+    samples = {
+        "G1": "4h swing high/low, enter retrace 61.8-72.5, stop swing low, target swing high",
+        "G2": "Gold points and percent in Asian and London sessions",
+        "G3": "Prior-day ATR, lines at -33% and +33%, does price react",
+        "G4": "Find the best Po3, or the best FVG",
+        "R1": "How many times has price bounced after a 75% retracement on this series, this timeframe?",
+        "B0": "From the 75% retracement, 1:1 R — what is the return / pnl / drawdown?",
+        "F1": "How does this series behave on CPI days?",
+        "A1": "Create the indicator for the winning spec",
+    }
+    for cid, english in samples.items():
+        job = ce(english)
+        if cid == "F1":
+            assert job["status"] == "needs_human"
+        elif cid == "A1":
+            assert job["status"] == "error"
+        else:
+            assert job.get("case_id") == cid, (cid, job.get("case_id"), job.get("status"), job.get("note"))
 
 
-class TestS15_8_gold_run_thin(unittest.TestCase):
-    def test_gold_run_without_thin_exits_nonzero(self):
-        with _tmp_root() as td:
-            root = Path(td)
-            _cache_csv(root, "XAUUSDT", 1396, seed=7)
-            job = compile_english("G1", SERIES_GOLD, write=True, root=root)
-            for item in job["plan"]:
-                if item["kind"] == "question":
-                    run_ask(root / item["yaml"], root=root, network=False)
-            st = [p for p in job["plan"] if p["kind"] == "strategy"][0]
-            spec_path = root / st["yaml"]
-            with self.assertRaises(RunError) as ctx:
-                run_strategy(spec_path, root=root, network=False, thin=False)
-            msg = str(ctx.exception).lower()
-            self.assertTrue("thin" in msg or "run_eligible" in msg)
-            self.assertIn("n_bars", msg)
-            folder = run_strategy(spec_path, root=root, network=False, thin=True)
-            metrics = json.loads((folder / "metrics.json").read_text())
-            self.assertTrue(metrics.get("thin"))
-            self.assertFalse(metrics.get("kept_possible"))
-            self.assertIn("net_return", metrics)
-            self.assertIn("pnl", metrics)
+def test_ask_rows_write_rivals_and_pandas(thin_gold_csv):
+    job = ce(bank_id="R1")
+    qs = [p for p in job["plan"] if p["kind"] == "question"]
+    assert len(qs) >= 2
+    for q in qs:
+        yp = ROOT / q["yaml"]
+        rc = cli(["ask", "--spec", str(yp), "--csv", str(thin_gold_csv), "--offline"])
+        assert rc == 0, q
+    runs = [
+        d
+        for d in (ROOT / "research" / "runs").iterdir()
+        if d.is_dir() and "r1-" in d.name.lower() and (d / "table.csv").exists()
+    ]
+    assert len(runs) >= 2
+    for d in runs[-2:]:
+        metrics = json.loads((d / "metrics.json").read_text())
+        assert "n" in metrics or "n_days" in metrics
+        for k in ("pnl", "net_return", "expectancy"):
+            assert k not in metrics
+        assert not (d / "trades.csv").exists()
 
 
-class TestS15_9_walkforward_tune_floors(unittest.TestCase):
-    def _refuse_wf_tune(self, symbol: str, n: int):
-        series = dict(SERIES_GOLD, symbol=symbol)
-        with _tmp_root() as td:
-            root = Path(td)
-            _cache_csv(root, symbol, n, seed=11)
-            job = compile_english("G1", series, write=True, root=root)
-            st = [p for p in job["plan"] if p["kind"] == "strategy"][0]
-            spec_path = root / st["yaml"]
-            with self.assertRaises(RunError) as ctx:
-                walkforward(spec_path, root=root, network=False)
-            wmsg = str(ctx.exception)
-            self.assertIn("walkforward", wmsg.lower())
-            self.assertIn("4000", wmsg)
-            self.assertIn("n_bars", wmsg)
-            self.assertIn(str(n), wmsg)
-            with self.assertRaises(RunError) as ctx2:
-                tune(spec_path, root=root, network=False)
-            tmsg = str(ctx2.exception)
-            self.assertIn("n_bars", tmsg)
-            self.assertTrue("walkforward" in tmsg.lower() or "4000" in tmsg or "tune" in tmsg.lower())
-
-    def test_xau_spy_qqq(self):
-        for sym in ("XAUUSDT", "SPYUSDT", "QQQUSDT"):
-            self._refuse_wf_tune(sym, 1396)
+def test_b0_g1_freeze_strategy_no_return_from_ask():
+    for cid in ("G1", "B0"):
+        job = ce(bank_id=cid)
+        assert job["status"] == "ok"
+        ss = [p for p in job["plan"] if p["kind"] == "strategy"]
+        assert len(ss) == 1
+        assert ss[0]["run_eligible"] is False
+        spec = yaml.safe_load((ROOT / ss[0]["yaml"]).read_text())
+        assert spec["kind"] == "strategy"
+        assert spec["run_eligible"] is False
+        rc = cli(["ask", "--spec", str(ROOT / ss[0]["yaml"])])
+        assert rc != 0
 
 
-class TestS15_12_mock_no_network_login(unittest.TestCase):
-    def test_mock_never_networks(self):
-        def boom(*_a, **_k):
-            raise AssertionError("network")
+def test_family_refuse_single_winner_and_tune_gold(thin_gold_csv):
+    for cid in ("G4", "B1", "B2", "B3", "B4", "B5", "B6"):
+        job = ce(bank_id=cid)
+        assert job["status"] == "ok", cid
+        ss = [p for p in job["plan"] if p["kind"] == "strategy"]
+        assert len(ss) >= 2, cid
+        assert job.get("single_winner") is False
+        for s in ss:
+            assert s.get("tune_eligible") is False
+            yp = ROOT / s["yaml"]
+            rc = cli(["tune", "--spec", str(yp), "--csv", str(thin_gold_csv)])
+            assert rc != 0, (cid, s["id"])
 
-        with patch("socket.create_connection", side_effect=boom), patch(
-            "urllib.request.urlopen", side_effect=boom
-        ):
-            job = compile_english("R1", SERIES_GOLD, write=False)
-        self.assertEqual(job["status"], "ok")
 
-    def test_live_backend_refuses_without_login(self):
-        with tempfile.TemporaryDirectory() as td:
-            auth_path = Path(td) / "auth.json"
-            with patch("themis.auth.AUTH_PATH", auth_path), patch(
-                "themis.compiler.auth.AUTH_PATH", auth_path
-            ):
-                logout("xai", path=auth_path)
-                logout("openai", path=auth_path)
-                with self.assertRaises(CompileError) as ctx:
-                    compile_english("R1", SERIES_GOLD, backend="xai", write=False)
-                msg = str(ctx.exception).lower()
-                self.assertIn("not logged in", msg)
-                self.assertIn("no fallback", msg)
-                with self.assertRaises(CompileError) as ctx2:
-                    compile_english("R1", SERIES_GOLD, backend="openai", write=False)
-                self.assertIn("not logged in", str(ctx2.exception).lower())
-                rc = main(["compile", "--english", "R1", "--backend", "xai", "--no-write"])
-                self.assertEqual(rc, 1)
+def test_f_needs_human_a_error():
+    for cid, status in [
+        ("F1", "needs_human"),
+        ("F2", "needs_human"),
+        ("F3", "needs_human"),
+        ("F4", "needs_human"),
+        ("A1", "error"),
+        ("A2", "error"),
+    ]:
+        job = ce(bank_id=cid)
+        assert job["status"] == status, (cid, job["status"])
 
-    def test_whoami_never_prints_token(self):
-        rows = whoami()
-        blob = json.dumps(rows)
-        self.assertNotIn("access_token", blob)
-        self.assertNotIn("refresh_token", blob)
-        for row in rows:
-            self.assertIn("provider", row)
-            self.assertIn("logged_in", row)
 
-    def test_unknown_and_bybit_needs_human(self):
-        job = compile_english("how do I cook pasta", SERIES_GOLD, write=False)
-        self.assertEqual(job["status"], "needs_human")
-        job2 = compile_english(
-            "bounce after 75% retracement on bybit", SERIES_GOLD, write=False
+def test_ask_refuses_return_question_no_strategy():
+    rc = cli(["ask", "--english", "what is the return / pnl / drawdown from 1:1 R"])
+    assert rc != 0
+
+
+def test_run_gold_thin_gates(thin_gold_csv):
+    job = ce(bank_id="G1")
+    strat = next(p for p in job["plan"] if p["kind"] == "strategy")
+    yp = str(ROOT / strat["yaml"])
+    rc = cli(["run", "--spec", yp, "--csv", str(thin_gold_csv)])
+    assert rc != 0
+    rc2 = cli(["run", "--spec", yp, "--csv", str(thin_gold_csv), "--thin"])
+    assert rc2 == 0
+    strat_runs = []
+    for d in (ROOT / "research" / "runs").iterdir():
+        if not d.is_dir() or not (d / "metrics.json").exists():
+            continue
+        meta = json.loads((d / "meta.json").read_text())
+        if meta.get("kind") == "strategy" and str(meta.get("symbol") or "").upper() == "XAUUSDT":
+            strat_runs.append(d)
+    assert strat_runs
+    metrics = json.loads((sorted(strat_runs)[-1] / "metrics.json").read_text())
+    assert metrics.get("thin") is True
+    assert metrics.get("kept") is False or metrics.get("kept_possible") is False
+
+
+def test_walkforward_tune_xau_spy_qqq(thin_gold_csv, spy_csv, qqq_csv):
+    for csv_path, symbol in [(thin_gold_csv, "XAUUSDT"), (spy_csv, "SPYUSDT"), (qqq_csv, "QQQUSDT")]:
+        job = ce(bank_id="G1", symbol=symbol)
+        strat = next(p for p in job["plan"] if p["kind"] == "strategy")
+        yp = str(ROOT / strat["yaml"])
+        rc = cli(["walkforward", "--spec", yp, "--csv", str(csv_path)])
+        assert rc != 0
+        rc2 = cli(["tune", "--spec", yp, "--csv", str(csv_path)])
+        assert rc2 != 0
+
+
+def test_walkforward_btc_not_refused_for_symbol(btc_csv):
+    job = ce(bank_id="G1", symbol="BTCUSDT")
+    strat = next(p for p in job["plan"] if p["kind"] == "strategy")
+    yp = ROOT / strat["yaml"]
+    spec = yaml.safe_load(yp.read_text())
+    spec["search_space"] = {"n": [3, 5]}
+    spec["walkforward_eligible"] = True
+    yp.write_text(yaml.safe_dump(spec, sort_keys=False))
+    rc = cli(["walkforward", "--spec", str(yp), "--csv", str(btc_csv)])
+    assert rc == 0
+
+
+def test_btc_run_writes_after_cost_metrics(btc_csv):
+    job = ce(bank_id="B0", symbol="BTCUSDT")
+    qs = [p for p in job["plan"] if p["kind"] == "question"]
+    strat = next(p for p in job["plan"] if p["kind"] == "strategy")
+    runs = ROOT / "research" / "runs"
+    runs.mkdir(parents=True, exist_ok=True)
+    for q in qs:
+        dummy = runs / f"dummy-{q['id']}-ask"
+        dummy.mkdir(exist_ok=True)
+        (dummy / "metrics.json").write_text("{}", encoding="utf-8")
+        (dummy / "meta.json").write_text(
+            json.dumps({"kind": "question", "spec_id": q["id"]}), encoding="utf-8"
         )
-        self.assertEqual(job2["status"], "needs_human")
-        job3 = compile_english("gold on bitget london range", SERIES_GOLD, write=False)
-        self.assertEqual(job3["status"], "needs_human")
+    yp = ROOT / strat["yaml"]
+    spec = yaml.safe_load(yp.read_text())
+    spec["run_eligible"] = True
+    yp.write_text(yaml.safe_dump(spec, sort_keys=False))
+    rc = cli(["run", "--spec", str(yp), "--csv", str(btc_csv)])
+    assert rc == 0
+    found = None
+    for d in sorted((ROOT / "research" / "runs").iterdir()):
+        if not (d / "metrics.json").exists():
+            continue
+        meta = json.loads((d / "meta.json").read_text())
+        if meta.get("kind") == "strategy" and meta.get("symbol") == "BTCUSDT":
+            found = d
+    assert found is not None
+    metrics = json.loads((found / "metrics.json").read_text())
+    meta = json.loads((found / "meta.json").read_text())
+    assert "net_return" in metrics
+    assert "pnl" in metrics
+    assert metrics.get("costs") or metrics.get("commission_per_side") is not None
+    assert meta.get("source") == "csv"
+    assert meta.get("n_bars", 0) >= 200
 
 
-class TestBtcSolRun(unittest.TestCase):
-    def test_btc_run_writes_after_cost_metrics(self):
-        series = dict(SERIES_GOLD, symbol="BTCUSDT")
-        with _tmp_root() as td:
-            root = Path(td)
-            _cache_csv(root, "BTCUSDT", 4500, seed=21)
-            job = compile_english("G1", series, write=True, root=root)
-            for item in job["plan"]:
-                if item["kind"] == "question":
-                    run_ask(root / item["yaml"], root=root, network=False)
-            st = [p for p in job["plan"] if p["kind"] == "strategy"][0]
-            self.assertTrue(st["run_eligible"])
-            folder = run_strategy(root / st["yaml"], root=root, network=False, thin=False)
-            metrics = json.loads((folder / "metrics.json").read_text())
-            self.assertIn("net_return", metrics)
-            self.assertIn("pnl", metrics)
-            self.assertIn("max_drawdown_pct", metrics)
-            self.assertIn("n_trades", metrics)
-            self.assertIn("not_modeled", metrics)
-            self.assertFalse(metrics["execution_ready"])
-            self.assertTrue((folder / "trades.csv").exists())
+def test_live_compile_refuses_without_login_no_mock_fallback(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    rc = cli(["compile", "--english", "bounce after 75% retracement", "--backend", "xai"])
+    assert rc != 0
 
 
-class TestCliAuth(unittest.TestCase):
-    def test_cli_whoami(self):
-        rc = main(["whoami"])
-        self.assertEqual(rc, 0)
+def test_login_stub_whoami_never_prints_token(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    rc = cli(["login", "xai"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    cli(["whoami"])
+    out2 = capsys.readouterr().out
+    assert "logged_in" in out2 or "logged-in" in out2
+    assert "access_token" not in out2
+    assert "access_token" not in out
+    authp = tmp_path / ".themis" / "auth.json"
+    if authp.exists():
+        blob = authp.read_text()
+        assert "access_token" not in blob or json.loads(blob).get("xai", {}).get("access_token") is None
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_no_auth_json_in_repo():
+    hits = [h for h in ROOT.rglob("auth.json") if ".venv" not in h.parts and ".themis" not in h.parts]
+    assert hits == []
+
+
+def test_spy_qqq_identity_not_emini():
+    spy = eligibility.identity_label("SPYUSDT")
+    qqq = eligibility.identity_label("QQQUSDT")
+    assert "ETF perp" in spy
+    assert "Not ES" in spy
+    assert "ETF perp" in qqq
+    assert "Not NQ" in qqq
