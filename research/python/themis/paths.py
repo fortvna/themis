@@ -9,7 +9,6 @@ def repo_root(start: Path | None = None) -> Path:
     for cand in [here, *here.parents]:
         if (cand / "docs" / "open-spec.md").exists() or (cand / "questions.md").exists():
             return cand
-    # installed package: research/python/themis/paths.py -> repo is parents[3]
     pkg = Path(__file__).resolve()
     guess = pkg.parents[3]
     if (guess / "questions.md").exists() or (guess / "docs" / "open-spec.md").exists():
