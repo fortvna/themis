@@ -1,0 +1,53 @@
+id: retrace-618-725-n5-1r-xau-4h-v1
+kind: strategy
+title: Enter 61.8–72.5 of confirmed n=5 swing, stop origin, target extreme
+family: retrace-618-725-swing-xau-4h-v1
+implements: strategies/retrace-618-725-n5-1r-xau-4h-v1.py
+requires_asks:
+  - retrace-618-725-swing-n5-xau-4h-v1
+  - retrace-618-725-swing-n3-xau-4h-v1
+hypothesis: >
+  Long: next open after a closed-bar touch of 61.8–72.5 retrace of a
+  confirmed n=5 up swing. Stop beyond swing low. Target swing high.
+  Short is symmetric. Frozen from example 1 English. Do not run until
+  both rival ask folders exist. Do not quote return from the ask.
+instrument:
+  symbol: XAUUSDT
+  venue: binance
+  timeframe: 4h
+  timezone: UTC
+data:
+  provider: binance
+  source: csv
+  exchange: binanceusdm
+  identity_note: "Binance USD-M XAUUSDT perp. Not COMEX."
+discovery:
+  start: 2025-12-11
+  end: 2026-07-31
+holdout:
+  start: null
+  end: null
+  note: not eligible. gold 4h too short.
+costs:
+  commission_per_side: 0.0004
+  slippage_ticks: 1
+  cost_unit: fraction_of_price
+  notes: "Placeholder. No funding. Not a live claim."
+rules:
+  fill: next_open
+  calc_on_closed_bar: true
+  entry: next open after closed-bar zone touch, swing already knowable
+  stop: beyond swing origin
+  target: swing extreme
+  size: 1
+forbidden:
+  - forming_bar_signals
+  - same_bar_fill
+  - future_pivots
+kill:
+  min_trades: 30
+  max_drawdown_pct: 40
+  min_net_return: 0
+search_space: {}
+tune_eligible: false
+walkforward_eligible: false

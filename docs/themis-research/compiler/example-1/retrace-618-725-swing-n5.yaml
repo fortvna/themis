@@ -1,0 +1,55 @@
+id: retrace-618-725-swing-n5-xau-4h-v1
+kind: question
+title: Touch 61.8–72.5 retrace of a confirmed swing, then target vs stop
+question_ref: gold-1
+hypothesis: >
+  After a swing high/low is confirmed on this 4h series, price often
+  enters the 61.8–72.5 retracement zone. Path after that touch is
+  measured to the prior swing high (target) vs swing low (stop).
+instrument:
+  symbol: XAUUSDT
+  venue: binance
+  timeframe: 4h
+  timezone: UTC
+data:
+  provider: binance
+  source: csv
+  exchange: binanceusdm
+  csv_path: vision-xau-4h
+  identity_note: "Binance USD-M XAUUSDT perp. Not COMEX. Not another venue."
+discovery:
+  start: 2025-12-11
+  end: 2026-07-31
+  note: actual Vision 4h months that exist. Not 2022-2024.
+holdout:
+  start: null
+  end: null
+  note: window too short to lock a holdout. ask only.
+population: events
+condition:
+  - kind: retracement_zone
+    pct_low: 0.618
+    pct_high: 0.725
+    of: confirmed_swing
+outcome:
+  name: target_before_stop
+  kind: flag
+  target: swing_high
+  stop: swing_low
+horizon: until_target_or_stop
+definitions:
+  swing_high: "bar i is a swing high if high[i] is strictly the max of i-n..i+n, n=5. Knowable at i+n."
+  swing_low: "bar i is a swing low if low[i] is strictly the min of i-n..i+n, n=5. Knowable at i+n."
+  impulse_long: "confirmed swing low then a later confirmed swing high; origin=swing low, extreme=swing high"
+  impulse_short: "confirmed swing high then a later confirmed swing low; origin=swing high, extreme=swing low"
+  zone_long: "extreme - 0.725*range through extreme - 0.618*range"
+  zone_short: "symmetric"
+  entry_touch: "closed bar whose range first intersects the zone after the swing is knowable. Not the forming swing bar."
+  target: "prior swing extreme (swing high for long, swing low for short)"
+  stop: "prior swing origin (swing low for long, swing high for short)"
+stats: [n, target_rate, stop_rate, neither_rate]
+forbidden:
+  - forming_bar_signals
+  - future_as_condition
+  - unlabeled_substitute_series
+  - quoting_pnl_from_this_ask

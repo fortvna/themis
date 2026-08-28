@@ -1,0 +1,48 @@
+{
+  "schema": "themis.job.v1",
+  "status": "ok",
+  "compiler": "mock",
+  "model": "grok-mock",
+  "source": {
+    "english": "4h swing high/low, enter retrace 61.8-72.5, stop swing low, target swing high",
+    "media": []
+  },
+  "instrument": {
+    "provider": "binance",
+    "symbol": "XAUUSDT",
+    "timeframe": "4h",
+    "exchange": "binanceusdm"
+  },
+  "plan": [
+    {
+      "kind": "question",
+      "id": "retrace-618-725-swing-n5-xau-4h-v1",
+      "purpose": "rival_definition",
+      "yaml": "compiler/example-1/retrace-618-725-swing-n5.yaml"
+    },
+    {
+      "kind": "question",
+      "id": "retrace-618-725-swing-n3-xau-4h-v1",
+      "purpose": "rival_definition",
+      "yaml": "compiler/example-1/retrace-618-725-swing-n3.yaml"
+    },
+    {
+      "kind": "strategy",
+      "id": "retrace-618-725-n5-1r-xau-4h-v1",
+      "requires": [
+        "retrace-618-725-swing-n5-xau-4h-v1",
+        "retrace-618-725-swing-n3-xau-4h-v1"
+      ],
+      "yaml": "compiler/example-1/retrace-618-725-swing-n5-strategy.yaml",
+      "run_eligible": false,
+      "tune_eligible": false,
+      "walkforward_eligible": false
+    }
+  ],
+  "gates": {
+    "freeze_yaml_before_metrics": true,
+    "rivals_min": 2,
+    "ask_before_run": true,
+    "tune_requires": "walkforward_eligible"
+  }
+}

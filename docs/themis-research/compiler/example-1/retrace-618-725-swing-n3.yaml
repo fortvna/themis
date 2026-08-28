@@ -1,0 +1,47 @@
+id: retrace-618-725-swing-n3-xau-4h-v1
+kind: question
+title: Same as n5 cousin, fractal n=3
+question_ref: gold-1
+family: retrace-618-725-swing-xau-4h-v1
+hypothesis: >
+  Rival swing definition. n=3 fractal instead of n=5.
+  Same 61.8–72.5 zone, same stop/target labels.
+instrument:
+  symbol: XAUUSDT
+  venue: binance
+  timeframe: 4h
+  timezone: UTC
+data:
+  provider: binance
+  source: csv
+  exchange: binanceusdm
+  csv_path: vision-xau-4h
+  identity_note: "Binance USD-M XAUUSDT perp. Not COMEX."
+discovery:
+  start: 2025-12-11
+  end: 2026-07-31
+holdout:
+  start: null
+  end: null
+  note: ask only. window too short for holdout.
+population: events
+condition:
+  - kind: retracement_zone
+    pct_low: 0.618
+    pct_high: 0.725
+    of: confirmed_swing
+outcome:
+  name: target_before_stop
+  kind: flag
+  target: swing_high
+  stop: swing_low
+horizon: until_target_or_stop
+definitions:
+  swing_high: "fractal n=3. Knowable at i+3."
+  swing_low: "fractal n=3. Knowable at i+3."
+  otherwise: "same as retrace-618-725-swing-n5-xau-4h-v1"
+stats: [n, target_rate, stop_rate, neither_rate]
+forbidden:
+  - forming_bar_signals
+  - future_as_condition
+  - quoting_pnl_from_this_ask

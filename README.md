@@ -4,6 +4,8 @@
 
 This repository is **Themis**. The package and CLI name is `themis`.
 
+**Implementation spec:** [`docs/open-spec.md`](docs/open-spec.md). It supersedes [`prompt.md`](prompt.md) for the build. v1 venue is **Binance** (USD-M perps via `binanceusdm`). Compiler default is `mock`. Operator login: `themis login xai` / `themis login openai`.
+
 Go-live means **this conversation works**, not that an order is sent:
 
 ```
@@ -22,7 +24,7 @@ you:  if from that retracement I target 1:1 R, what is the return?
       → run folder: return, pnl, drawdown, calmar, cagr, sortino, …
 
 you:  create the strategy and backtest
-you:  optimize
+You:  optimize
 you:  create the indicator / alert
 
       → only after a hypothesis is kept
@@ -136,4 +138,4 @@ research/
 
 ## Build brief
 
-Implementation instructions live in [`prompt.md`](prompt.md). Example English lives in [`questions.md`](questions.md).
+Implementation spec is [`docs/open-spec.md`](docs/open-spec.md). It supersedes [`prompt.md`](prompt.md) for the build. Example English lives in [`questions.md`](questions.md).
