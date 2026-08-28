@@ -5,21 +5,25 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "themis"
 version = "0.1.0"
-description = "Themis research loop: English in, YAML frozen, then pandas or backtesting.py"
+description = "Themis research loop: English in, YAML frozen, pandas or backtesting.py writes a run folder."
 requires-python = ">=3.11"
 dependencies = [
-  "pandas>=2.0",
-  "numpy>=1.26",
-  "pyyaml>=6.0",
+  "pandas",
+  "numpy",
+  "pyyaml",
+  "backtesting",
 ]
 
 [project.optional-dependencies]
-ccxt = ["ccxt"]
-run = ["backtesting"]
+cxt = ["ccxt"]
+dev = ["pytest"]
 
 [project.scripts]
-themis = "themis.cli:main"
+themis = "themis.runner:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["themis*"]
+include = ["themis*", "strategies*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,4 +1,3 @@
-from themis.cli import main
+from themis.runner import main
 
-if __name__ == "__main__":
-    raise SystemExit(main())
+raise SystemExit(main())
