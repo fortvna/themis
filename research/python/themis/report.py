@@ -1,68 +1,42 @@
-"""Markdown from a run folder. Artifacts only. Never ES/NQ for SPY/QQQ."""
-
+"""Markdown from a run folder. Artifacts only. No invented metrics."""
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-from themis.data import research_root
+from themis.paths import repo_root, research_dir
 
 
-def _never_emini(text: str, symbol: str) -> str:
-    s = (symbol or "").upper()
-    if s in {"SPYUSDT", "QQQUSDT"}:
-        for bad in (" e-mini", " emini", " ES", " NQ", "ES ", "NQ "):
-            text = text.replace(bad, " ETF perp ")
-        text = text.replace("ES/NQ", "ETF perp")
-    return text
-
-
-def render(run_dir: str | Path, root: Path | None = None) -> Path:
-    run = Path(run_dir)
-    if not run.exists():
-        root = root or research_root()
-        alt = root / run_dir
-        if alt.exists():
-            run = alt
-        else:
-            alt2 = root / "research" / "runs" / Path(run_dir).name
-            if alt2.exists():
-                run = alt2
-            else:
-                raise FileNotFoundError(run_dir)
-    meta = json.loads((run / "meta.json").read_text(encoding="utf-8")) if (run / "meta.json").exists() else {}
-    metrics = json.loads((run / "metrics.json").read_text(encoding="utf-8")) if (run / "metrics.json").exists() else {}
-    symbol = meta.get("symbol") or ""
-    thin = bool(meta.get("thin") or metrics.get("thin"))
+def write_report(run_dir: Path, *, root: Path | None = None) -> Path:
+    run_dir = Path(run_dir)
+    if not run_dir.exists():
+        raise FileNotFoundError(run_dir)
+    meta = json.loads((run_dir / "meta.json").read_text()) if (run_dir / "meta.json").exists() else {}
+    metrics = json.loads((run_dir / "metrics.json").read_text()) if (run_dir / "metrics.json").exists() else {}
+    ident = metrics.get("identity") or {}
     lines = [
-        f"# Report `{run.name}`",
+        f"# Report `{run_dir.name}`",
         "",
-        f"- kind: {meta.get('kind')}",
-        f"- spec: {meta.get('spec_id')}",
-        f"- provider: {meta.get('provider')} symbol: {symbol} source: {meta.get('source')}",
-        f"- actual_start: {meta.get('actual_start')} actual_end: {meta.get('actual_end')} n_bars: {meta.get('n_bars')}",
-        f"- identity: {meta.get('identity') or ''}",
-        f"- thin: {str(thin).lower()}",
-        f"- execution_ready: {meta.get('execution_ready', False)}",
-        f"- kept: {meta.get('kept', False)}",
+        f"- kind: `{meta.get('kind')}`",
+        f"- stage: `{meta.get('stage')}`",
+        f"- spec: `{meta.get('spec_id')}`",
+        f"- n_bars: `{meta.get('n_bars')}` actual_start `{meta.get('actual_start')}` actual_end `{meta.get('actual_end')}`",
+        f"- provider `{meta.get('provider')}` source `{meta.get('source')}`",
+        f"- thin: `{meta.get('thin')}`",
+        f"- execution_ready: `{meta.get('execution_ready')}`",
         "",
-        "Numbers below are copied from the run folder. Chat did not invent them.",
-        "",
-        "## metrics.json",
+        "Metrics quoted only from this folder.",
         "",
         "```json",
-        json.dumps(metrics, indent=2, default=str),
+        json.dumps(metrics, indent=2),
         "```",
         "",
     ]
-    if symbol.upper() in {"SPYUSDT", "QQQUSDT"}:
-        lines.append("This series is an ETF perp, not ES, not NQ, not e-mini.")
-        lines.append("")
-    body = _never_emini("\n".join(lines), symbol)
-    root = root or research_root()
-    out_dir = root / "research" / "reports"
+    if ident.get("product") == "etf_perp" or meta.get("symbol") in ("SPYUSDT", "QQQUSDT"):
+        lines.insert(2, "- product: ETF perp, **not ES**, **not NQ**.")
+    root = root or repo_root()
+    out_dir = research_dir(root) / "reports"
     out_dir.mkdir(parents=True, exist_ok=True)
-    out = out_dir / f"{run.name}.md"
-    out.write_text(body, encoding="utf-8")
-    print(f"report wrote {out}")
+    out = out_dir / f"{run_dir.name}.md"
+    out.write_text("\n".join(lines) + "\n")
     return out

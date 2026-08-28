@@ -54,8 +54,7 @@ def main(argv: list[str] | None = None) -> int:
     fet.add_argument("--offline", action="store_true")
 
     askp = sub.add_parser("ask")
-    askp.add_argument("--spec", default=None)
-    askp.add_argument("--english", default=None)
+    askp.add_argument("--spec", required=True)
     askp.add_argument("--offline", action="store_true")
 
     runp = sub.add_parser("run")
@@ -113,19 +112,6 @@ def main(argv: list[str] | None = None) -> int:
             _print(s.meta())
             return 0
         if args.cmd == "ask":
-            if args.english and not args.spec:
-                t = args.english.lower()
-                if any(w in t for w in ("what is the return", "pnl", "drawdown", "expectancy")):
-                    print("ask refuses a return question with no strategy spec", file=sys.stderr)
-                    return 1
-                print("ask refuses a return question with no strategy spec" if "return" in t else "ask needs --spec", file=sys.stderr)
-                if "return" in t or "pnl" in t:
-                    return 1
-                print("ask requires --spec", file=sys.stderr)
-                return 2
-            if not args.spec:
-                print("ask requires --spec", file=sys.stderr)
-                return 2
             folder = run_ask(args.spec, network=not args.offline)
             print(str(folder))
             metrics = json.loads((folder / "metrics.json").read_text())
