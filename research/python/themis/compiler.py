@@ -158,3 +158,326 @@ BANK: dict[str, dict[str, Any]] = {
     "A1": {"path": "error", "english": "Create the indicator for the winning spec", "needles": [("create the indicator",), ("indicator for the winning",)], "why": "after kept only"},
     "A2": {"path": "error", "english": "Create the alert for the winning spec", "needles": [("create the alert",), ("alert for the winning",)], "why": "after kept only"},
 }
+
+
+class CompileError(RuntimeError):
+    pass
+
+
+def _norm(s: str) -> str:
+    s = s.lower()
+    s = s.replace("—", "-").replace("–", "-").replace("−", "-")
+    s = s.replace("“", '"').replace("”", '"').replace("’", "'")
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def _sym_tag(symbol: str) -> str:
+    return re.sub(r"usdt$", "", symbol.lower())
+
+
+def _tf_tag(timeframe: str) -> str:
+    return timeframe.lower()
+
+
+def _series_id(cid: str, suffix: str, series: dict[str, str]) -> str:
+    return f"{cid.lower()}-{suffix}-{_sym_tag(series['symbol'])}-{_tf_tag(series['timeframe'])}-v1"
+
+
+def match_case(english: str) -> tuple[str | None, dict[str, Any] | None]:
+    raw = english.strip()
+    key = raw.upper()
+    if key in BANK:
+        return key, BANK[key]
+    n = _norm(english)
+    for cid, rec in BANK.items():
+        if _norm(rec["english"]) == n:
+            return cid, rec
+    hits: list[str] = []
+    for cid, rec in BANK.items():
+        for group in rec.get("needles") or []:
+            if all(_norm(g) in n for g in group):
+                hits.append(cid)
+                break
+    if len(hits) == 1:
+        return hits[0], BANK[hits[0]]
+    if len(hits) > 1:
+        for prefer in ("G1", "G2", "G3", "G4", "B0"):
+            if prefer in hits:
+                return prefer, BANK[prefer]
+        return hits[0], BANK[hits[0]]
+    return None, None
+
+
+def _instrument(series: dict[str, str]) -> dict[str, Any]:
+    return {
+        "symbol": series["symbol"],
+        "venue": series["provider"],
+        "provider": series["provider"],
+        "timeframe": series["timeframe"],
+        "timezone": "UTC",
+        "exchange": series.get("exchange") or "binanceusdm",
+    }
+
+
+def _data_block(series: dict[str, str]) -> dict[str, Any]:
+    note = f"Binance USD-M {series['symbol']} perp."
+    if series["symbol"] == "XAUUSDT":
+        note += " Not COMEX. Not another venue."
+    if series["symbol"] == "SPYUSDT":
+        note += " ETF perp, not ES."
+    if series["symbol"] == "QQQUSDT":
+        note += " ETF perp, not NQ."
+    return {
+        "provider": series["provider"],
+        "source": "csv",
+        "exchange": series.get("exchange") or "binanceusdm",
+        "identity_note": note,
+    }
+
+
+def _windows() -> tuple[dict[str, Any], dict[str, Any]]:
+    discovery = {"start": None, "end": None, "note": "use all loaded bars of this series; do not invent missing years"}
+    holdout = {"start": None, "end": None, "note": "holdout null until bars can lock a tail without emptying discovery"}
+    return discovery, holdout
+
+
+def _question(qid: str, title: str, series: dict[str, str], *, measure: str, definitions: dict, condition: list, outcome: dict, stats: list, population: str = "events", extra: dict | None = None) -> dict[str, Any]:
+    discovery, holdout = _windows()
+    spec: dict[str, Any] = {
+        "id": qid,
+        "kind": "question",
+        "title": title,
+        "instrument": _instrument(series),
+        "data": _data_block(series),
+        "discovery": discovery,
+        "holdout": holdout,
+        "population": population,
+        "condition": condition,
+        "outcome": outcome,
+        "definitions": definitions,
+        "stats": stats,
+        "forbidden": [
+            "forming_bar_signals",
+            "future_as_condition",
+            "quoting_pnl_from_this_ask",
+            "inventing_metrics_in_chat",
+        ],
+        "measure": measure,
+    }
+    if extra:
+        spec.update(extra)
+    return spec
+
+
+def _strategy(sid: str, title: str, series: dict[str, str], *, family: str, implements: str, requires: list[str], rules: dict, extra: dict | None = None) -> dict[str, Any]:
+    discovery, holdout = _windows()
+    spec: dict[str, Any] = {
+        "id": sid,
+        "kind": "strategy",
+        "title": title,
+        "family": family,
+        "implements": implements,
+        "requires_asks": requires,
+        "instrument": _instrument(series),
+        "data": _data_block(series),
+        "discovery": discovery,
+        "holdout": holdout,
+        "costs": {
+            "commission_per_side": 0.0004,
+            "slippage_ticks": 1,
+            "cost_unit": "fraction_of_price",
+            "notes": "Placeholder. No funding. Not a live claim. Zero only as written 0 plus a reason.",
+        },
+        "rules": rules,
+        "forbidden": ["forming_bar_signals", "same_bar_fill", "future_pivots"],
+        "kill": {"min_trades": 30, "max_drawdown_pct": 40, "min_net_return": 0},
+        "search_space": {},
+        "run_eligible": False,
+        "walkforward_eligible": False,
+        "tune_eligible": False,
+    }
+    if extra:
+        spec.update(extra)
+    thin_sym = series["symbol"] in ("XAUUSDT", "SPYUSDT", "QQQUSDT")
+    if thin_sym:
+        spec["run_eligible"] = False
+        spec["walkforward_eligible"] = False
+        spec["tune_eligible"] = False
+    else:
+        spec["run_eligible"] = True
+        spec["walkforward_eligible"] = True
+        spec["tune_eligible"] = bool(spec.get("search_space"))
+    return spec
+
+
+from themis.cases import build_case
+
+
+def _blank_job(english: str, series: dict[str, str], status: str, note: str, media_status: list | None = None) -> dict[str, Any]:
+    return {
+        "schema": SCHEMA,
+        "status": status,
+        "source": {
+            "english": english,
+            "media": media_status or [],
+            "compiler": "mock",
+            "model": "mock",
+        },
+        "instrument": {
+            "provider": series["provider"],
+            "symbol": series["symbol"],
+            "timeframe": series["timeframe"],
+            "exchange": series.get("exchange") or "binanceusdm",
+        },
+        "plan": [],
+        "gates": GATES,
+        "note": note,
+    }
+
+
+def compile_english(
+    english: str,
+    series: dict[str, str],
+    media: list | None = None,
+    *,
+    backend: str = "mock",
+    write: bool = False,
+    root: Path | None = None,
+) -> dict[str, Any]:
+    backend = (backend or "mock").lower()
+    if backend not in ("mock", "xai", "openai"):
+        raise CompileError(f"unknown backend {backend}")
+    if backend != "mock":
+        if not auth.is_logged_in(backend):
+            raise CompileError(f"not logged in for {backend}. themis login {backend}. no fallback to mock.")
+        raise CompileError(
+            f"live compile backend={backend} is logged in as stub but live compile is not released. "
+            "no model call. no spend. use --backend mock until Amir leaves mock."
+        )
+
+    media_status = []
+    if media:
+        for m in media:
+            media_status.append({**dict(m), "status": "unsupported"})
+
+    n = _norm(english)
+    if "bybit" in n or "bitget" in n:
+        job = _blank_job(english, series, "needs_human", "v1 venue is Binance. Naming Bybit/Bitget is needs_human.", media_status)
+        if write:
+            _write_job(job, root=root)
+        return job
+
+    cid, rec = match_case(english)
+    if rec is None:
+        job = _blank_job(english, series, "needs_human", "unknown English under mock. do not invent definitions.", media_status)
+        if write:
+            _write_job(job, root=root)
+        return job
+
+    if rec["path"] == "needs_human":
+        job = _blank_job(english, series, "needs_human", rec.get("why") or "needs_human", media_status)
+        job["case_id"] = cid
+        job["path"] = "needs_human"
+        if write:
+            _write_job(job, root=root)
+        return job
+    if rec["path"] == "error":
+        job = _blank_job(english, series, "error", rec.get("why") or "after kept only", media_status)
+        job["case_id"] = cid
+        job["path"] = "error"
+        if write:
+            _write_job(job, root=root)
+        return job
+
+    qs, ss, path, note = build_case(cid, rec, series, english)
+    job = {
+        "schema": SCHEMA,
+        "status": "ok",
+        "case_id": cid,
+        "path": path,
+        "note": note,
+        "source": {
+            "english": english,
+            "media": media_status,
+            "compiler": "mock",
+            "model": "mock",
+        },
+        "instrument": {
+            "provider": series["provider"],
+            "symbol": series["symbol"],
+            "timeframe": series["timeframe"],
+            "exchange": series.get("exchange") or "binanceusdm",
+        },
+        "plan": [],
+        "gates": GATES,
+        "single_winner": False,
+        "refuse_tune_on_thin": path == "family",
+    }
+    if write:
+        root = root or repo_root()
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        job_dir = jobs_dir(root) / f"{stamp}-{cid.lower()}"
+        qdir = questions_dir(root)
+        sdir = specs_dir(root)
+        job_dir.mkdir(parents=True, exist_ok=True)
+        qdir.mkdir(parents=True, exist_ok=True)
+        sdir.mkdir(parents=True, exist_ok=True)
+        plan = []
+        for q in qs:
+            rel = f"research/questions/{q['id']}.yaml"
+            dump_yaml(dict(q), root / rel)
+            plan.append({"kind": "question", "id": q["id"], "purpose": "rival_definition", "yaml": rel})
+        for s in ss:
+            rel = f"research/specs/{s['id']}.yaml"
+            dump_yaml(dict(s), root / rel)
+            plan.append({
+                "kind": "strategy",
+                "id": s["id"],
+                "requires": list(s.get("requires_asks") or []),
+                "yaml": rel,
+                "run_eligible": bool(s.get("run_eligible")),
+                "walkforward_eligible": bool(s.get("walkforward_eligible")),
+                "tune_eligible": bool(s.get("tune_eligible")),
+            })
+        job["plan"] = plan
+        dump_yaml(job, job_dir / "job.yaml")
+        (job_dir / "job.json").write_text(json.dumps(job, indent=2) + "\n")
+        job["written"] = str(job_dir)
+    else:
+        job["plan"] = (
+            [{"kind": "question", "id": q["id"], "purpose": "rival_definition"} for q in qs]
+            + [
+                {
+                    "kind": "strategy",
+                    "id": s["id"],
+                    "requires": list(s.get("requires_asks") or []),
+                    "run_eligible": bool(s.get("run_eligible")),
+                    "walkforward_eligible": bool(s.get("walkforward_eligible")),
+                    "tune_eligible": bool(s.get("tune_eligible")),
+                }
+                for s in ss
+            ]
+        )
+        job["questions"] = qs
+        job["strategies"] = ss
+    return job
+
+
+def _write_job(job: dict[str, Any], root: Path | None = None) -> None:
+    root = root or repo_root()
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    cid = job.get("case_id") or "unknown"
+    job_dir = jobs_dir(root) / f"{stamp}-{cid}"
+    job_dir.mkdir(parents=True, exist_ok=True)
+    dump_yaml(job, job_dir / "job.yaml")
+    (job_dir / "job.json").write_text(json.dumps(job, indent=2) + "\n")
+    job["written"] = str(job_dir)
+
+
+def compile_bank(series: dict[str, str], *, write: bool = False, root: Path | None = None) -> dict[str, dict[str, Any]]:
+    out = {}
+    for cid, rec in BANK.items():
+        out[cid] = compile_english(cid, series, backend="mock", write=write, root=root)
+        out[cid]["case_id"] = cid
+    return out
