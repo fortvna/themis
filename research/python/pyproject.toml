@@ -15,8 +15,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-cxt = ["ccxt"]
-dev = ["pytest"]
+ccxt = ["ccxt"]
 
 [project.scripts]
 themis = "themis.runner:main"
@@ -24,6 +23,3 @@ themis = "themis.runner:main"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["themis*", "strategies*"]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
