@@ -45,7 +45,6 @@ def load_auth(path: Path | None = None) -> dict[str, Any]:
 def save_auth(data: dict[str, Any], path: Path | None = None) -> Path:
     p = path or AUTH_PATH
     p.parent.mkdir(parents=True, exist_ok=True)
-    # never write a token string; only flags
     clean: dict[str, Any] = {}
     for k in PROVIDERS:
         rec = dict(data.get(k) or {})
