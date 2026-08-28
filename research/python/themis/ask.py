@@ -393,9 +393,18 @@ def run_ask(spec_path: str | Path, *, root: Path | None = None, network: bool = 
     spec = load_spec(spec_path)
     if spec.get("kind") != "question":
         raise AskError("ask rejects strategy specs")
-    title = str(spec.get("title") or "")
-    if spec.get("kind") == "question" and is_return_question(title) and "retracement" in title.lower() and "1:1" in title:
-        raise AskError("ask rejects a return question with no strategy spec")
+    blob = " ".join(str(spec.get(k) or "") for k in ("title", "hypothesis", "id", "english")).lower()
+    return_needles = (
+        "what is the return",
+        "pnl",
+        "drawdown",
+        "expectancy",
+        "edge after costs",
+        "1:1 r",
+        "1:1r",
+    )
+    if any(n in blob for n in return_needles):
+        raise AskError("ask refuses a return question with no strategy spec")
     root = root or repo_root()
     try:
         series = load_from_spec(spec, root=root, network=network)
