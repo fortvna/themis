@@ -54,13 +54,16 @@ def main(argv: list[str] | None = None) -> int:
     fet.add_argument("--offline", action="store_true")
 
     askp = sub.add_parser("ask")
-    askp.add_argument("--spec", required=True)
+    askp.add_argument("--spec", default=None)
+    askp.add_argument("--english", default=None)
     askp.add_argument("--offline", action="store_true")
+    askp.add_argument("--csv", default=None)
 
     runp = sub.add_parser("run")
     runp.add_argument("--spec", required=True)
     runp.add_argument("--thin", action="store_true")
     runp.add_argument("--offline", action="store_true")
+    runp.add_argument("--csv", default=None)
 
     val = sub.add_parser("validate")
     val.add_argument("--spec", required=True)
@@ -70,6 +73,7 @@ def main(argv: list[str] | None = None) -> int:
     wf = sub.add_parser("walkforward")
     wf.add_argument("--spec", required=True)
     wf.add_argument("--offline", action="store_true")
+    wf.add_argument("--csv", default=None)
 
     cmpp = sub.add_parser("compare")
     cmpp.add_argument("--family", required=True)
@@ -77,6 +81,7 @@ def main(argv: list[str] | None = None) -> int:
     tun = sub.add_parser("tune")
     tun.add_argument("--spec", required=True)
     tun.add_argument("--offline", action="store_true")
+    tun.add_argument("--csv", default=None)
 
     rep = sub.add_parser("report")
     rep.add_argument("--run", required=True)
@@ -112,13 +117,26 @@ def main(argv: list[str] | None = None) -> int:
             _print(s.meta())
             return 0
         if args.cmd == "ask":
-            folder = run_ask(args.spec, network=not args.offline)
+            if args.english and not args.spec:
+                t = args.english.lower()
+                if any(w in t for w in ("what is the return", "pnl", "drawdown", "expectancy")):
+                    print("ask refuses a return question with no strategy spec", file=sys.stderr)
+                    return 1
+                print("ask refuses a return question with no strategy spec" if "return" in t else "ask needs --spec", file=sys.stderr)
+                if "return" in t or "pnl" in t:
+                    return 1
+                print("ask requires --spec", file=sys.stderr)
+                return 2
+            if not args.spec:
+                print("ask requires --spec", file=sys.stderr)
+                return 2
+            folder = run_ask(args.spec, network=not args.offline, csv_path=args.csv)
             print(str(folder))
             metrics = json.loads((folder / "metrics.json").read_text())
             _print(metrics)
             return 0
         if args.cmd == "run":
-            folder = run_strategy(args.spec, network=not args.offline, thin=args.thin)
+            folder = run_strategy(args.spec, network=not args.offline, thin=args.thin, csv_path=args.csv)
             print(str(folder))
             _print(json.loads((folder / "metrics.json").read_text()))
             return 0
@@ -127,7 +145,7 @@ def main(argv: list[str] | None = None) -> int:
             print(str(folder))
             return 0
         if args.cmd == "walkforward":
-            folder = walkforward(args.spec, network=not args.offline)
+            folder = walkforward(args.spec, network=not args.offline, csv_path=args.csv)
             print(str(folder))
             return 0
         if args.cmd == "compare":
@@ -136,7 +154,7 @@ def main(argv: list[str] | None = None) -> int:
             _print(json.loads((folder / "metrics.json").read_text()))
             return 0
         if args.cmd == "tune":
-            folder = tune(args.spec, network=not args.offline)
+            folder = tune(args.spec, network=not args.offline, csv_path=args.csv)
             print(str(folder))
             return 0
         if args.cmd == "report":
