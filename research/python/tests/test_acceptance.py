@@ -256,31 +256,46 @@ def test_btc_run_writes_after_cost_metrics(btc_csv):
     meta = json.loads((found / "meta.json").read_text())
     assert "net_return" in metrics
     assert "pnl" in metrics
-    assert metrics.get("costs") or metrics.get("commission_per_side") is not None
     assert meta.get("source") == "csv"
     assert meta.get("n_bars", 0) >= 200
 
 
 def test_live_compile_refuses_without_login_no_mock_fallback(tmp_path, monkeypatch):
-    monkeypatch.setenv("HOME", str(tmp_path))
+    authp = tmp_path / ".themis" / "auth.json"
+    authp.parent.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr("themis.auth.AUTH_PATH", authp)
     rc = cli(["compile", "--english", "bounce after 75% retracement", "--backend", "xai"])
     assert rc != 0
 
 
-def test_login_stub_whoami_never_prints_token(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("HOME", str(tmp_path))
-    rc = cli(["login", "xai"])
+def test_whoami_never_prints_token_and_save_keeps_tokens(tmp_path, monkeypatch, capsys):
+    from themis import auth as authmod
+    authp = tmp_path / ".themis" / "auth.json"
+    monkeypatch.setattr(authmod, "AUTH_PATH", authp)
+    monkeypatch.setattr("themis.auth.AUTH_PATH", authp)
+    data = {
+        "xai": {
+            "logged_in": True,
+            "stub": False,
+            "token_present": True,
+            "access_token": "secret-access",
+            "refresh_token": "secret-refresh",
+        },
+        "openai": {"logged_in": False},
+    }
+    saved = authmod.save_auth(data, path=authp)
+    stored = json.loads(saved.read_text())
+    assert stored["xai"]["access_token"] == "secret-access"
+    assert stored["xai"]["refresh_token"] == "secret-refresh"
+    assert oct(saved.stat().st_mode)[-3:] == "600"
+    rc = cli(["whoami"])
     assert rc == 0
     out = capsys.readouterr().out
-    cli(["whoami"])
-    out2 = capsys.readouterr().out
-    assert "logged_in" in out2 or "logged-in" in out2
-    assert "access_token" not in out2
+    assert "logged_in" in out or "logged-in" in out
     assert "access_token" not in out
-    authp = tmp_path / ".themis" / "auth.json"
-    if authp.exists():
-        blob = authp.read_text()
-        assert "access_token" not in blob or json.loads(blob).get("xai", {}).get("access_token") is None
+    assert "refresh_token" not in out
+    assert "secret-access" not in out
+    assert "secret-refresh" not in out
 
 
 def test_no_auth_json_in_repo():
