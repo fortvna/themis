@@ -1,10 +1,14 @@
 """Locate the Themis repo and research tree."""
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 
 def repo_root(start: Path | None = None) -> Path:
+    env = os.environ.get("THEMIS_ROOT")
+    if env:
+        return Path(env)
     here = (start or Path.cwd()).resolve()
     for cand in [here, *here.parents]:
         if (cand / "docs" / "open-spec.md").exists() or (cand / "questions.md").exists():

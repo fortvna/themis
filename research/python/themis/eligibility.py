@@ -103,32 +103,6 @@ def evaluate(
     return el
 
 
-class FloorError(RuntimeError):
-    """Named floor failed. Message includes the floor and actual n_bars."""
-
-
-LIKELY_SHORT_VISION = frozenset({"XAUUSDT", "SPYUSDT", "QQQUSDT"})
-KILL_DEFAULT = {
-    "min_trades": KILL_MIN_TRADES,
-    "max_drawdown_pct": KILL_MAX_DRAWDOWN_PCT,
-    "min_net_return": KILL_MIN_NET_RETURN,
-}
-
-
-def is_thin(n_bars: int) -> bool:
-    return int(n_bars) < THIN_BARS
-
-
-def compile_time_flags(symbol: str) -> dict:
-    short = (symbol or "").upper() in LIKELY_SHORT_VISION
-    return {
-        "run_eligible": not short,
-        "walkforward_eligible": not short,
-        "tune_eligible": False if short else True,
-        "thin": short,
-    }
-
-
 def identity_label(symbol: str) -> str:
     s = (symbol or "").upper()
     if s == "XAUUSDT":
@@ -142,60 +116,3 @@ def identity_label(symbol: str) -> str:
     if s == "SOLUSDT":
         return "Binance USD-M SOLUSDT perp."
     return f"Binance USD-M {s} perp."
-
-
-def check_ask(n_bars: int) -> None:
-    el = evaluate(n_bars)
-    if not el.ask_ok:
-        raise FloorError(el.refuse_message("ask"))
-
-
-def check_run(n_bars: int, costs, thin_ok: bool, yaml_run_eligible: bool | None) -> dict:
-    costs_written = bool(isinstance(costs, dict) and costs)
-    el = evaluate(n_bars, costs_written=costs_written)
-    if not el.run_ok:
-        raise FloorError(el.refuse_message("run"))
-    if el.thin and not thin_ok:
-        raise FloorError(
-            f"run_eligible false / thin series n_bars={n_bars} < {THIN_BARS}; "
-            "pass --thin (kept still impossible)"
-        )
-    if yaml_run_eligible is False and not thin_ok:
-        raise FloorError(
-            f"run_eligible false / thin series n_bars={n_bars} < {THIN_BARS}; "
-            "pass --thin (kept still impossible)"
-        )
-    return {"thin": el.thin, "run_ok": True, "kept_possible": (not el.thin)}
-
-
-def check_validate(n_bars: int, holdout_n_bars: int | None) -> None:
-    h = 0 if holdout_n_bars is None else int(holdout_n_bars)
-    el = evaluate(n_bars, holdout_n_bars=h, holdout_unused=True)
-    if not el.validate_ok:
-        raise FloorError(el.refuse_message("validate"))
-
-
-def check_walkforward(n_bars: int, n_folds: int = WALKFORWARD_MIN_FOLDS) -> None:
-    el = evaluate(n_bars, n_folds=n_folds)
-    if not el.walkforward_ok:
-        raise FloorError(el.refuse_message("walkforward"))
-
-
-def check_tune(n_bars: int, n_folds: int, search_space, yaml_wf_eligible: bool | None = None) -> None:
-    el = evaluate(n_bars, n_folds=n_folds, search_space=search_space or None)
-    if not el.tune_ok:
-        raise FloorError(el.refuse_message("tune"))
-    if yaml_wf_eligible is False:
-        raise FloorError(
-            f"tune requires walkforward_eligible; yaml walkforward_eligible=false n_bars={n_bars}"
-        )
-
-
-def kept_possible(thin: bool, kill_passed: bool = False, validated: bool = False):
-    if thin:
-        return False, "kept impossible: thin=true"
-    if not kill_passed:
-        return False, "kept impossible: kill not passed"
-    if not validated:
-        return False, "kept impossible: no successful validate"
-    return True, ""

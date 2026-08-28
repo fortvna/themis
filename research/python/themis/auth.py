@@ -117,3 +117,10 @@ def whoami(path: Path | None = None) -> list[dict[str, Any]]:
             }
         )
     return rows
+
+
+def require_login(provider: str) -> None:
+    if not is_logged_in(provider):
+        raise AuthError(
+            f"not logged in for {provider}. themis login {provider}. no fallback to mock."
+        )
