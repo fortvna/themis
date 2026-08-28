@@ -21,6 +21,25 @@ def _series(args: argparse.Namespace) -> dict[str, str]:
     }
 
 
+def _spec_with_csv(spec_path: str | None, csv_path: str | None) -> str | None:
+    """Pin data.source=csv on a temp copy so engines need not take csv_path=."""
+    if not spec_path:
+        return spec_path
+    if not csv_path:
+        return spec_path
+    import tempfile
+    from pathlib import Path as P
+    from themis.spec import load_yaml, dump_yaml
+    spec = load_yaml(spec_path)
+    data = dict(spec.get("data") or {})
+    data["source"] = "csv"
+    data["csv_path"] = str(csv_path)
+    spec["data"] = data
+    tmp = P(tempfile.mkdtemp(prefix="themis-csv-")) / P(spec_path).name
+    dump_yaml(spec, tmp)
+    return str(tmp)
+
+
 def _print(obj: Any) -> None:
     if isinstance(obj, (dict, list)):
         print(json.dumps(obj, indent=2, default=str))
@@ -130,13 +149,13 @@ def main(argv: list[str] | None = None) -> int:
             if not args.spec:
                 print("ask requires --spec", file=sys.stderr)
                 return 2
-            folder = run_ask(args.spec, network=not args.offline, csv_path=args.csv)
+            folder = run_ask(_spec_with_csv(args.spec, args.csv), network=not args.offline)
             print(str(folder))
             metrics = json.loads((folder / "metrics.json").read_text())
             _print(metrics)
             return 0
         if args.cmd == "run":
-            folder = run_strategy(args.spec, network=not args.offline, thin=args.thin, csv_path=args.csv)
+            folder = run_strategy(_spec_with_csv(args.spec, args.csv), network=not args.offline, thin=args.thin)
             print(str(folder))
             _print(json.loads((folder / "metrics.json").read_text()))
             return 0
@@ -145,7 +164,7 @@ def main(argv: list[str] | None = None) -> int:
             print(str(folder))
             return 0
         if args.cmd == "walkforward":
-            folder = walkforward(args.spec, network=not args.offline, csv_path=args.csv)
+            folder = walkforward(_spec_with_csv(args.spec, args.csv), network=not args.offline)
             print(str(folder))
             return 0
         if args.cmd == "compare":
@@ -154,7 +173,7 @@ def main(argv: list[str] | None = None) -> int:
             _print(json.loads((folder / "metrics.json").read_text()))
             return 0
         if args.cmd == "tune":
-            folder = tune(args.spec, network=not args.offline, csv_path=args.csv)
+            folder = tune(_spec_with_csv(args.spec, args.csv), network=not args.offline)
             print(str(folder))
             return 0
         if args.cmd == "report":
