@@ -9,6 +9,7 @@ from typing import Any
 import yaml
 
 from themis import auth
+from themis import named as named_fields
 from themis.paths import jobs_dir, questions_dir, repo_root, specs_dir
 from themis.spec import dump_yaml
 
@@ -18,6 +19,7 @@ GATES = {
     "rivals_min": 2,
     "ask_before_run": True,
     "tune_requires": "walkforward_eligible",
+    "named_fields_pinned": True,
 }
 
 
@@ -44,6 +46,9 @@ Rules:
 - Spec ids: lowercase, include symbol and timeframe tags.
 - implements: strategies/retrace_swing.py
 - Fields when relevant: fractal_n, pct_low, pct_high, atr_n, stop_atr_mult.
+- Named fields in the English (stop, target, retrace pct, timeframe, symbol, entry, side) are pinned. Do not rewrite them.
+- low + 1 ATR as stop is not low - ATR. Sign is part of the name.
+- Rivals only for unnamed keys (fractal n, ATR period if unstated). New spec ids. Cousins copy the named stop/target.
 """
 
 
@@ -129,7 +134,6 @@ def _materialize(job: dict[str, Any], qs: list[dict], ss: list[dict], *, write: 
         job["questions"] = qs
         job["strategies"] = ss
     return job
-
 
 
 def _lift_engine_fields(spec: dict[str, Any]) -> None:
@@ -270,6 +274,16 @@ def _compile_live(
         _lift_engine_fields(q)
     for s in ss:
         _lift_engine_fields(s)
+    parsed_named = named_fields.parse_named(english)
+    parsed["named"] = parsed_named
+    gates = dict(parsed.get("gates") or GATES)
+    gates["named_fields_pinned"] = True
+    parsed["gates"] = gates
+    try:
+        named_fields.pin_plan(parsed_named, qs, ss)
+    except named_fields.NamedGateError as e:
+        parsed["status"] = "error"
+        raise CompileError(str(e)) from e
     cid = str(parsed.get("case_id") or "live")
     parsed["questions"] = qs
     parsed["strategies"] = ss
