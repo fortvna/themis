@@ -1,37 +1,24 @@
-# cache and local bars — never commit Vision CSVs or fixtures
-research/.cache/
-**/.cache/
-*.csv
-
-# run / report artifacts (keep gitkeep)
-research/runs/*
-!research/runs/.gitkeep
-research/reports/*
-!research/reports/.gitkeep
-
-# auth tokens live only under ~/.themis — never in the repo
-.themis/
-**/auth.json
-**/.themis/
-
-# python
 .venv/
 venv/
 __pycache__/
 *.py[cod]
 *.egg-info/
-.pytest_cache/
 dist/
 build/
-.eggs/
-
-# editor / os
+.env
+.themis/
+**/auth.json
+research/.cache/
+research/runs/*
+!research/runs/.gitkeep
+research/jobs/*
+!research/jobs/.gitkeep
+*.csv
+*.zip
 .DS_Store
-*.swp
-
-# generated compile artifacts (operator desk, not fixtures)
-research/jobs/
 research/questions/*
 !research/questions/.gitkeep
 research/specs/*
 !research/specs/.gitkeep
+research/reports/*
+!research/reports/.gitkeep
