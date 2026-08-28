@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from themis import auth
+from themis import named as named_fields
 from themis.paths import jobs_dir, questions_dir, repo_root, specs_dir
 from themis.spec import dump_yaml
 from themis.live import compile_live, CompileError as LiveCompileError
@@ -18,6 +19,7 @@ GATES = {
     "rivals_min": 2,
     "ask_before_run": True,
     "tune_requires": "walkforward_eligible",
+    "named_fields_pinned": True,
 }
 
 # §9 bank. path: ask | run | family | needs_human | error
@@ -167,8 +169,8 @@ class CompileError(RuntimeError):
 
 def _norm(s: str) -> str:
     s = s.lower()
-    s = s.replace("—", "-").replace("–", "-").replace("−", "-")
-    s = s.replace("“", '"').replace("”", '"').replace("’", "'")
+    s = s.replace("\u2014", "-").replace("\u2013", "-").replace("\u2212", "-")
+    s = s.replace("\u201c", '"').replace("\u201d", '"').replace("\u2019", "'")
     s = re.sub(r"\s+", " ", s).strip()
     return s
 
@@ -315,6 +317,89 @@ def _strategy(sid: str, title: str, series: dict[str, str], *, family: str, impl
 from themis.cases import build_case
 
 
+def _build_named_case(english: str, series: dict[str, str], named: dict[str, Any]):
+    """Rivals only for unnamed keys. New spec ids. Cousins copy job.named."""
+    tag = _sym_tag(series["symbol"])
+    tf = _tf_tag(series["timeframe"])
+    family = f"{tag}_{tf}_named_retrace"
+    pct = float(named.get("retrace_pct") or 0.618)
+    pct_high = float(named.get("retrace_pct_high") or pct)
+    stop_txt = named_fields._pretty_stop(named["stop"]) if named.get("stop") else "named stop"
+    target_txt = named_fields._pretty_target(named["target"]) if named.get("target") else "named target"
+    rivals = ((5, 14), (3, 20))
+    qs = []
+    for n_frac, n_atr in rivals:
+        qid = f"{tag}_{tf}_named_n{n_frac}_atr{n_atr}"
+        qs.append(
+            _question(
+                qid,
+                f"Confirmed n={n_frac} swing, retrace {pct}, stop {stop_txt}",
+                series,
+                measure="swing_retrace",
+                extra={
+                    "family": family,
+                    "fractal_n": n_frac,
+                    "atr_n": n_atr,
+                    "pct_low": pct,
+                    "pct_high": pct_high,
+                },
+                definitions={
+                    "swing_high": f"bar i is a swing high if high[i] is strictly the max of i-n..i+n, n={n_frac}. Knowable at i+n.",
+                    "swing_low": f"bar i is a swing low if low[i] is strictly the min of i-n..i+n, n={n_frac}. Knowable at i+n.",
+                    "stop": stop_txt,
+                    "target": target_txt,
+                    "pinned": english,
+                },
+                condition=[{
+                    "kind": "retracement_zone",
+                    "pct_low": pct,
+                    "pct_high": pct_high,
+                    "of": "confirmed_swing",
+                    "fractal_n": n_frac,
+                }],
+                outcome={
+                    "name": "target_before_stop",
+                    "kind": "flag",
+                    "target": target_txt,
+                    "stop": stop_txt,
+                },
+                stats=["n", "target_rate", "stop_rate", "neither_rate"],
+            )
+        )
+    sid = f"{tag}_{tf}_named_retrace"
+    st = _strategy(
+        sid,
+        f"Enter {pct} retrace of confirmed n=5 swing, stop {stop_txt}, target {target_txt}",
+        series,
+        family=family,
+        implements="strategies/retrace_swing.py",
+        requires=[q["id"] for q in qs],
+        rules={
+            "fill": "next_open",
+            "entry": "next open after closed-bar retrace touch, swing already knowable",
+            "stop": stop_txt,
+            "target": target_txt,
+            "calc_on_closed_bar": True,
+        },
+        extra={
+            "fractal_n": 5,
+            "atr_n": 14,
+            "pct_low": pct,
+            "pct_high": pct_high,
+            "definition": {
+                "fractal_n": 5,
+                "pct_low": pct,
+                "pct_high": pct_high,
+                "atr_n": 14,
+                "stop": stop_txt,
+                "take_profit": target_txt,
+            },
+        },
+    )
+    note = "named stop/target pinned; rivals are unnamed fractal n and ATR period only"
+    return qs, [st], "run", note
+
+
 def _blank_job(english: str, series: dict[str, str], status: str, note: str, media_status: list | None = None) -> dict[str, Any]:
     return {
         "schema": SCHEMA,
@@ -365,35 +450,48 @@ def compile_english(
             media_status.append({**dict(m), "status": "unsupported"})
 
     n = _norm(english)
+    parsed_named = named_fields.parse_named(english)
     if "bybit" in n or "bitget" in n:
         job = _blank_job(english, series, "needs_human", "v1 venue is Binance. Naming Bybit/Bitget is needs_human.", media_status)
+        job["named"] = parsed_named
         if write:
             _write_job(job, root=root)
         return job
 
     cid, rec = match_case(english)
-    if rec is None:
+    if rec is None and not named_fields.has_named_trade_fields(parsed_named):
         job = _blank_job(english, series, "needs_human", "unknown English under mock. do not invent definitions.", media_status)
+        job["named"] = parsed_named
         if write:
             _write_job(job, root=root)
         return job
 
-    if rec["path"] == "needs_human":
+    if rec is not None and rec["path"] == "needs_human":
         job = _blank_job(english, series, "needs_human", rec.get("why") or "needs_human", media_status)
         job["case_id"] = cid
+        job["named"] = parsed_named
         job["path"] = "needs_human"
         if write:
             _write_job(job, root=root)
         return job
-    if rec["path"] == "error":
+    if rec is not None and rec["path"] == "error":
         job = _blank_job(english, series, "error", rec.get("why") or "after kept only", media_status)
         job["case_id"] = cid
+        job["named"] = parsed_named
         job["path"] = "error"
         if write:
             _write_job(job, root=root)
         return job
 
-    qs, ss, path, note = build_case(cid, rec, series, english)
+    if rec is None:
+        qs, ss, path, note = _build_named_case(english, series, parsed_named)
+        cid = "NAMED"
+    else:
+        qs, ss, path, note = build_case(cid, rec, series, english)
+    try:
+        named_fields.pin_plan(parsed_named, qs, ss)
+    except named_fields.NamedGateError as e:
+        raise CompileError(str(e)) from e
     job = {
         "schema": SCHEMA,
         "status": "ok",
@@ -416,6 +514,7 @@ def compile_english(
         "gates": GATES,
         "single_winner": False,
         "refuse_tune_on_thin": path == "family",
+        "named": parsed_named,
     }
     if write:
         root = root or repo_root()
