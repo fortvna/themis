@@ -40,3 +40,8 @@ def write_report(run_dir: Path, *, root: Path | None = None) -> Path:
     out = out_dir / f"{run_dir.name}.md"
     out.write_text("\n".join(lines) + "\n")
     return out
+
+
+def render(run_dir, root=None):
+    p = Path(run_dir)
+    return write_report(p, root=root)

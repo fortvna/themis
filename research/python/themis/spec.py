@@ -86,7 +86,7 @@ def validate_question(spec: dict[str, Any]) -> dict[str, Any]:
     if spec.get("kind") != "question":
         raise SpecError(f"kind must be question, got {spec.get('kind')!r}")
     if _ellipsis_in_definitions(spec.get("definitions")):
-        raise SpecError("definitions must be explicit; no '...' ".replace(" '", " '"))
+        raise SpecError("definitions must be explicit; no '...'" )
     hold = spec.get("holdout") or {}
     if hold.get("start") is None and not hold.get("note"):
         raise SpecError("holdout may be null only with a note")
@@ -135,3 +135,26 @@ def is_return_question(english_or_spec: Any) -> bool:
         blob = str(english_or_spec).lower()
     needles = ("return", "pnl", "drawdown", "expectancy", "edge after costs")
     return any(n in blob for n in needles)
+
+
+ASK_PNL_KEYS = PNL_KEYS
+
+
+def validate_spec(spec: dict) -> None:
+    kind = spec.get("kind")
+    if kind == "question":
+        validate_question(spec)
+    elif kind == "strategy":
+        validate_strategy(spec)
+    else:
+        raise SpecError(f"unknown kind {kind!r}; no spec, no run")
+
+
+def looks_like_return_question(text: str) -> bool:
+    return is_return_question(text)
+
+
+def reject_ask_pnl(metrics: dict) -> None:
+    bad = [k for k in metrics.keys() if k.lower() in PNL_KEYS or k.lower().startswith("pnl")]
+    if bad:
+        raise SpecError(f"ask must not write pnl keys: {bad}")
