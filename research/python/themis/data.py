@@ -1,6 +1,7 @@
 """csv | vision | optional ccxt. Cache under research/.cache. No warehouse."""
 from __future__ import annotations
 
+import csv
 import io
 import zipfile
 from dataclasses import dataclass, field
@@ -296,7 +297,7 @@ def fetch_ccxt(
                 t1 = datetime.fromisoformat(str(end).replace("Z", "+00:00"))
                 if batch[-1][0] >= int(t1.timestamp() * 1000):
                     break
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — surface venue refusal (e.g. HTTP 451)
         raise DataError(f"ccxt fetch failed (do not assume fapi): {e}") from e
     if not rows:
         raise DataError("ccxt returned no bars")
@@ -338,17 +339,3 @@ def load_from_spec(spec: dict[str, Any], *, root: Path | None = None, network: b
     if source == "ccxt":
         return fetch_ccxt(symbol, timeframe, provider=provider, exchange=exchange, start=start, end=end)
     raise DataError(f"unknown data.source {source!r}")
-
-
-def research_root(start=None):
-    from themis.paths import repo_root
-    return repo_root(start)
-
-
-def cache_path(symbol: str, timeframe: str, root=None):
-    return cache_dir(root) / "binance" / "binanceusdm" / symbol.upper() / f"{timeframe}.csv"
-
-
-def load_bars(spec: dict, root=None):
-    series = load_from_spec(spec, root=root, network=True)
-    return series.df, series.meta()
