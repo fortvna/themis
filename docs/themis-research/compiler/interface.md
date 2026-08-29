@@ -67,7 +67,7 @@ Unknown English under mock: return `status: needs_human` with a blank Job skelet
 
 YAML only. Question specs and, if the English is a trade, a strategy spec marked `run_eligible` from the gated ladder.
 
-It may not write `metrics.json`. pandas or `backtesting.py` does that after the YAML exists.
+It may not write `metrics.json`. pandas `ask` or `run` (load `implements` → fill → metrics) does that after the YAML exists. Retrace-swing English points at `strategies/retrace_swing.py`. A new kind of idea needs a new family module, not a silent retrace.
 
 ## Gold example 1 (tried)
 

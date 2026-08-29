@@ -1,3 +1,7 @@
+# Python deps live only in this tree's env: research/python/.venv
+# (or uv/poetry pointed at this directory). Never pip install --user.
+# Never sudo pip. Never the system / Command Line Tools interpreter.
+
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
@@ -5,7 +9,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "themis"
 version = "0.1.0"
-description = "Themis research loop: English in, YAML frozen, pandas or backtesting.py writes a run folder."
+description = "Themis research loop: English in, YAML frozen, pandas ask and pandas bar-loop run write a folder."
 requires-python = ">=3.11"
 dependencies = [
   "pandas",
@@ -15,7 +19,7 @@ dependencies = [
 
 [project.optional-dependencies]
 ccxt = ["ccxt"]
-run = ["backtesting"]
+dev = ["pytest", "ipykernel", "matplotlib"]
 
 [project.scripts]
 themis = "themis.cli:main"
@@ -23,3 +27,7 @@ themis = "themis.cli:main"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["themis*", "strategies*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

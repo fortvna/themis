@@ -10,6 +10,7 @@ import yaml
 
 from themis import auth
 from themis import named as named_fields
+from themis.metrics import tick_size
 from themis.paths import jobs_dir, questions_dir, repo_root, specs_dir
 from themis.spec import dump_yaml
 
@@ -32,7 +33,7 @@ LIVE_SYSTEM = """You are Themis compiler. Output ONLY themis.job.v1 YAML or JSON
 Rules:
 - schema: themis.job.v1
 - source.compiler is xai. Do not invent n, rates, pnl, bounce_rate, return, drawdown, expectancy.
-- Freeze YAML structure only. Engines write metrics later.
+- Freeze YAML structure only. pandas ask and the pandas bar-loop write metrics later.
 - The series is passed in. You do not pick a venue or a symbol.
 - data.source: vision. provider binance. exchange binanceusdm.
 - Vague English must emit at least two rival question specs (kind: question) with explicit definitions, then a strategy spec if the English is a trade.
@@ -44,8 +45,8 @@ Rules:
 - execution_ready is false. Do not claim kept.
 - Include questions[] and strategies[] as full spec mappings plus plan[].
 - Spec ids: lowercase, include symbol and timeframe tags.
-- implements: strategies/retrace_swing.py
-- Fields when relevant: fractal_n, pct_low, pct_high, atr_n, stop_atr_mult.
+- implements: strategies/retrace_swing.py for retrace-swing English only. Same shape, new numbers → same module, numbers on the YAML. New kind → existing family module or needs_human. Never default 0.618. Never a new .py per message.
+- Fields when relevant: fractal_n, pct_low, pct_high, retrace_pct, atr_n, stop_atr_mult.
 - Named fields in the English (stop, target, retrace pct, timeframe, symbol, entry, side) are pinned. Do not rewrite them.
 - low + 1 ATR as stop is not low - ATR. Sign is part of the name.
 - Rivals only for unnamed keys (fractal n, ATR period if unstated). New spec ids. Cousins copy the named stop/target.
@@ -254,6 +255,7 @@ def _compile_live(
         s.setdefault("costs", {
             "commission_per_side": 0.0004,
             "slippage_ticks": 1,
+            "tick_size": tick_size(series.get("symbol"), {}),
             "cost_unit": "fraction_of_price",
             "notes": "Placeholder. Binance USD-M taker-ish. No funding. Not a live claim.",
         })

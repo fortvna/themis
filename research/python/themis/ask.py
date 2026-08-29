@@ -42,13 +42,18 @@ def _strip_pnl(metrics: dict[str, Any]) -> dict[str, Any]:
 
 
 def _daily(df: pd.DataFrame) -> pd.DataFrame:
-    d = df.resample("1D").agg(
-        open=("open", "first"),
-        high=("high", "max"),
-        low=("low", "min"),
-        close=("close", "last"),
-        volume=("volume", "sum"),
-    )
+    # UTC date, labeled at session start. Prior-day features must shift(1)
+    # (G3 already does). closed/label left so the day's high is not stamped
+    # on the next midnight.
+    how = {
+        "open": ("open", "first"),
+        "high": ("high", "max"),
+        "low": ("low", "min"),
+        "close": ("close", "last"),
+    }
+    if "volume" in df.columns:
+        how["volume"] = ("volume", "sum")
+    d = df.resample("1D", closed="left", label="left").agg(**how)
     return d.dropna()
 
 
@@ -179,6 +184,116 @@ def _atr_daily(d: pd.DataFrame, n: int) -> pd.Series:
     return tr.rolling(n).mean()
 
 
+def daily_bars(df: pd.DataFrame) -> pd.DataFrame:
+    """UTC daily OHLC from finer bars. Public for hypothesis notebooks."""
+    return _daily(df)
+
+
+# Unnamed-key catalog for this ask family. YAML freezes one row each. Notebook does not invent rivals.
+ATR_COMPLETE_RIVALS = (
+    {"atr_n": 14, "complete": "day_range"},
+    {"atr_n": 20, "complete": "day_range"},
+    {"atr_n": 14, "complete": "from_open"},
+    {"atr_n": 20, "complete": "from_open"},
+)
+
+
+def atr_path_days(df: pd.DataFrame, *, atr_n: int) -> pd.DataFrame:
+    """Daily OHLC + range + from_open + ATR + prior_atr. No month cut. Not pnl."""
+    d = _daily(df).copy()
+    d["day_range"] = d.high - d.low
+    d["from_open"] = np.maximum(d.high - d.open, d.open - d.low)
+    d["atr"] = _atr_daily(d, int(atr_n))
+    d["prior_atr"] = d["atr"].shift(1)
+    return d
+
+
+def atr_complete_table(
+    df: pd.DataFrame,
+    *,
+    atr_n: int,
+    complete: str = "day_range",
+    window: str = "last_calendar_month",
+) -> pd.DataFrame:
+    """Prior-day ATR complete flags. Knowable-at: prior_atr uses shift(1). Not pnl."""
+    d2 = atr_path_days(df, atr_n=atr_n).dropna(subset=["prior_atr"]).copy()
+    if d2.empty:
+        return d2
+    last = d2.index.max()
+    if window == "last_calendar_month":
+        month_start = pd.Timestamp(year=int(last.year), month=int(last.month), day=1, tz="UTC")
+        d2 = d2[d2.index >= month_start].copy()
+    complete_def = complete if complete in ("from_open", "day_range") else "day_range"
+    if complete_def == "from_open":
+        d2["excursion"] = d2["from_open"]
+    else:
+        d2["excursion"] = d2["day_range"]
+    d2["complete"] = d2["excursion"] >= d2["prior_atr"]
+    d2["range_over_atr"] = d2["excursion"] / d2["prior_atr"].replace(0, np.nan)
+    d2["atr_n"] = int(atr_n)
+    d2["complete_def"] = complete_def
+    return d2
+
+
+def atr_complete_summary(table: pd.DataFrame) -> dict[str, Any]:
+    """One rival's rates. Same keys the run folder writes (minus identity)."""
+    nn = int(len(table))
+    k = int(table["complete"].sum()) if nn and "complete" in table.columns else 0
+    rate = (k / nn) if nn else None
+    complete_def = None
+    atr_n = None
+    if nn:
+        if "complete_def" in table.columns:
+            complete_def = str(table["complete_def"].iloc[0])
+        if "atr_n" in table.columns:
+            atr_n = int(table["atr_n"].iloc[0])
+    return {
+        "n": nn,
+        "n_days": nn,
+        "n_complete": k,
+        "complete_rate": None if rate is None else round(float(rate), 4),
+        "complete_rate_ci95": ci95(float(rate), nn) if rate is not None else None,
+        "atr_n": atr_n,
+        "complete_def": complete_def,
+        "window_start": str(table.index.min()) if nn else None,
+        "window_end": str(table.index.max()) if nn else None,
+        "median_range_over_atr": (
+            round(float(table["range_over_atr"].median()), 4)
+            if nn and "range_over_atr" in table.columns
+            else None
+        ),
+    }
+
+
+def atr_complete_rivals(
+    df: pd.DataFrame,
+    *,
+    rivals: tuple[dict[str, Any], ...] | list[dict[str, Any]] | None = None,
+    window: str = "last_calendar_month",
+) -> tuple[pd.DataFrame, dict[tuple[int, str], pd.DataFrame]]:
+    """All unnamed-key rivals. Logic here; notebook only displays."""
+    spec = tuple(rivals) if rivals is not None else ATR_COMPLETE_RIVALS
+    tables: dict[tuple[int, str], pd.DataFrame] = {}
+    rows = []
+    for r in spec:
+        n = int(r["atr_n"])
+        how = str(r["complete"])
+        t = atr_complete_table(df, atr_n=n, complete=how, window=window)
+        tables[(n, how)] = t
+        rows.append(atr_complete_summary(t))
+    return pd.DataFrame(rows), tables
+
+
+def plot_range_vs_prior_atr(table: pd.DataFrame, *, title: str | None = None):
+    """Display helper. No hypothesis math."""
+    ax = table[["day_range", "prior_atr"]].plot(
+        figsize=(10, 4),
+        title=title or "daily range vs prior-day ATR",
+    )
+    ax.set_ylabel("price points")
+    return ax
+
+
 def measure(spec: dict[str, Any], series: SeriesLoad) -> tuple[dict[str, Any], pd.DataFrame]:
     df = series.df
     kind = spec.get("measure") or (spec.get("condition") or [{}])[0].get("kind")
@@ -286,6 +401,20 @@ def measure(spec: dict[str, Any], series: SeriesLoad) -> tuple[dict[str, Any], p
             "react_minus": round(float(react_lo[touch_lo].mean()), 4) if n_lo else None,
             "atr_n": n_atr, "react": react, "note": "condition knowable at prior daily close. not a trade.",
         })
+        return _strip_pnl(metrics), table
+
+    if kind == "atr_complete" or extra.get("measure") == "atr_complete":
+        n_atr = int(extra.get("atr_n") or 14)
+        complete_def = extra.get("complete") or extra.get("complete_def") or "day_range"
+        win = extra.get("window") or "last_calendar_month"
+        d2 = atr_complete_table(df, atr_n=n_atr, complete=complete_def, window=win)
+        stats = atr_complete_summary(d2)
+        table = d2.reset_index(names="ts")
+        keep = [c for c in ("ts", "open", "high", "low", "close", "prior_atr", "day_range", "from_open", "complete", "range_over_atr") if c in table.columns]
+        table = table[keep]
+        metrics.update(stats)
+        metrics["window"] = win
+        metrics["note"] = "prior-day ATR knowable at prior daily close. complete is a path flag. not pnl."
         return _strip_pnl(metrics), table
 
     d = _daily(df).copy()

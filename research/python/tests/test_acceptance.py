@@ -185,6 +185,15 @@ def test_run_gold_thin_gates(thin_gold_csv):
     job = ce(bank_id="G1")
     strat = next(p for p in job["plan"] if p["kind"] == "strategy")
     yp = str(ROOT / strat["yaml"])
+    runs = ROOT / "research" / "runs"
+    runs.mkdir(parents=True, exist_ok=True)
+    for q in [p for p in job["plan"] if p["kind"] == "question"]:
+        dummy = runs / f"dummy-{q['id']}-ask"
+        dummy.mkdir(exist_ok=True)
+        (dummy / "metrics.json").write_text("{}", encoding="utf-8")
+        (dummy / "meta.json").write_text(
+            json.dumps({"kind": "question", "spec_id": q["id"]}), encoding="utf-8"
+        )
     rc = cli(["run", "--spec", yp, "--csv", str(thin_gold_csv)])
     assert rc != 0
     rc2 = cli(["run", "--spec", yp, "--csv", str(thin_gold_csv), "--thin"])

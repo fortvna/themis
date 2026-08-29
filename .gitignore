@@ -1,3 +1,4 @@
+# Repo-local Python env only. Never commit it. Never pip --user instead.
 .venv/
 venv/
 __pycache__/

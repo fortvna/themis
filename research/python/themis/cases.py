@@ -368,7 +368,7 @@ def build_case(cid: str, rec: dict[str, Any], series: dict[str, str], english: s
                 "stop": "beyond impulse origin (1R)",
                 "target": "1R toward impulse extreme",
             },
-            extra={"retrace_pct": 0.75, "fractal_n": 5},
+            extra={"retrace_pct": 0.75, "fractal_n": 5, "pct_low": 0.75, "pct_high": 0.75},
         )
         return qs, [st], "run", "requires R1+R3 asks; gold thin; no pandas return"
 

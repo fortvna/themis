@@ -1,28 +1,17 @@
-"""v1 implements: SMA crossover. Next-open fill via backtesting.py (trade_on_close=False)."""
-
+"""SMA crossover family stub. Not a v1 run engine."""
 from __future__ import annotations
 
+from typing import Any
+
 import pandas as pd
-from backtesting import Strategy
-from backtesting.lib import crossover
+
+REQUIRED_SPEC_KEYS = ("n_fast", "n_slow")
+FILL = "next_open"
 
 
-def SMA(s, n):
-    return pd.Series(s).rolling(int(n)).mean()
-
-
-class SmaCross(Strategy):
-    n1 = 10
-    n2 = 40
-
-    def init(self):
-        self.fast = self.I(SMA, self.data.Close, self.n1)
-        self.slow = self.I(SMA, self.data.Close, self.n2)
-
-    def next(self):
-        if crossover(self.fast, self.slow):
-            self.position.close()
-            self.buy()
-        elif crossover(self.slow, self.fast):
-            self.position.close()
-            self.sell()
+def trades(spec: dict[str, Any], df: pd.DataFrame, *, commission: float = 0.0, slip: float = 0.0) -> pd.DataFrame:
+    raise NotImplementedError(
+        "strategies/sma_cross.py is a stub family. "
+        "v1 retrace-swing English uses strategies/retrace_swing.py. "
+        "Do not run this implements until a real SMA module exists."
+    )

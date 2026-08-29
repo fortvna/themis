@@ -339,6 +339,13 @@ class TestBtcSolRun(unittest.TestCase):
             self.assertIn("not_modeled", metrics)
             self.assertFalse(metrics["execution_ready"])
             self.assertTrue((folder / "trades.csv").exists())
+            self.assertTrue((folder / "equity.csv").exists())
+            self.assertEqual(metrics.get("periods_per_year"), 2190)
+            nc = metrics.get("not_computed") or {}
+            self.assertIsInstance(nc, dict)
+            for key in ("sharpe", "sortino", "calmar", "cagr", "profit_factor", "expectancy"):
+                self.assertTrue(key in metrics or key in nc, key)
+            self.assertNotEqual(nc, ["calmar", "cagr", "sortino", "sharpe", "profit_factor"])
 
 
 class TestCliAuth(unittest.TestCase):

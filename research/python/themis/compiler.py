@@ -9,6 +9,7 @@ from typing import Any
 
 from themis import auth
 from themis import named as named_fields
+from themis.metrics import tick_size
 from themis.paths import jobs_dir, questions_dir, repo_root, specs_dir
 from themis.spec import dump_yaml
 from themis.live import compile_live, CompileError as LiveCompileError
@@ -289,6 +290,7 @@ def _strategy(sid: str, title: str, series: dict[str, str], *, family: str, impl
         "costs": {
             "commission_per_side": 0.0004,
             "slippage_ticks": 1,
+            "tick_size": tick_size(series["symbol"], {}),
             "cost_unit": "fraction_of_price",
             "notes": "Placeholder. No funding. Not a live claim. Zero only as written 0 plus a reason.",
         },

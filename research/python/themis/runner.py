@@ -8,19 +8,37 @@ from typing import Any
 
 import pandas as pd
 
-from themis.ask import AskError, run_ask
 from themis.data import SeriesLoad, load_from_spec
 from themis.eligibility import evaluate
-from themis.paths import python_dir, repo_root, runs_dir
+from themis.fill import simulate_exit
+from themis.implements import ImplementsError, load_implements
+from themis.metrics import equity_on_bars, slip_price, strategy_metrics
+from themis.paths import repo_root, runs_dir
 from themis.report import write_report
 from themis.spec import SpecError, dump_yaml, load_spec
-
-NOT_MODELED = ["perp funding", "intra-bar stop/target path"]
-NOT_COMPUTED = ["calmar", "cagr", "sortino", "sharpe", "profit_factor"]
 
 
 class RunError(RuntimeError):
     pass
+
+
+def _trades_from_implements(spec: dict[str, Any], df: pd.DataFrame, *, root: Path, symbol: str) -> pd.DataFrame:
+    try:
+        mod = load_implements(spec, root=root)
+    except ImplementsError as e:
+        raise RunError(str(e)) from e
+    costs = spec.get("costs") or {}
+    commission = float(costs.get("commission_per_side") or 0)
+    slip = slip_price(symbol, costs)
+    try:
+        trades = mod.trades(spec, df, commission=commission, slip=slip)
+    except Exception as e:
+        raise RunError(f"implements {spec.get('implements')} failed: {e}") from e
+    if trades is None:
+        return pd.DataFrame()
+    if not isinstance(trades, pd.DataFrame):
+        raise RunError(f"implements {spec.get('implements')} trades() must return a DataFrame")
+    return trades
 
 
 def _stamp() -> str:
@@ -45,140 +63,6 @@ def _require_ask_folders(spec: dict[str, Any], root: Path) -> None:
         raise RunError(f"missing requires_asks folders: {missing}")
 
 
-def _max_dd(equity: list[float]) -> float:
-    peak = equity[0] if equity else 0.0
-    dd = 0.0
-    for x in equity:
-        peak = max(peak, x)
-        if peak:
-            dd = min(dd, (x - peak) / peak)
-    return round(abs(dd) * 100.0, 4)
-
-
-def _swing_trades(df: pd.DataFrame, n: int, pct_low: float, pct_high: float, commission: float) -> pd.DataFrame:
-    """Next-open fill after zone touch. Stop origin, target extreme. Optimistic 4h OHLC."""
-    from themis.ask import fractals
-
-    sh, sl = fractals(df, n)
-    trades = []
-    used: set[int] = set()
-    opens = df["open"].to_numpy()
-    highs = df["high"].to_numpy()
-    lows = df["low"].to_numpy()
-    closes = df["close"].to_numpy()
-    idx = df.index
-
-    def fill_trade(side: str, touch: int, origin: float, extreme: float) -> None:
-        entry_i = touch + 1
-        if entry_i >= len(df):
-            return
-        entry = float(opens[entry_i])
-        cost = abs(entry) * commission * 2
-        exit_px = None
-        why = "open_end"
-        exit_i = len(df) - 1
-        for k in range(entry_i, len(df)):
-            if side == "long":
-                hit_t = highs[k] >= extreme
-                hit_s = lows[k] <= origin
-                if hit_t and hit_s:
-                    why, exit_px, exit_i = "ambiguous_same_bar", float(closes[k]), k
-                    break
-                if hit_t:
-                    why, exit_px, exit_i = "target", float(extreme), k
-                    break
-                if hit_s:
-                    why, exit_px, exit_i = "stop", float(origin), k
-                    break
-            else:
-                hit_t = lows[k] <= extreme
-                hit_s = highs[k] >= origin
-                if hit_t and hit_s:
-                    why, exit_px, exit_i = "ambiguous_same_bar", float(closes[k]), k
-                    break
-                if hit_t:
-                    why, exit_px, exit_i = "target", float(extreme), k
-                    break
-                if hit_s:
-                    why, exit_px, exit_i = "stop", float(origin), k
-                    break
-        if exit_px is None:
-            exit_px = float(closes[-1])
-        if side == "long":
-            pnl = exit_px - entry - cost
-        else:
-            pnl = entry - exit_px - cost
-        trades.append(
-            {
-                "side": side,
-                "entry_ts": str(idx[entry_i]),
-                "exit_ts": str(idx[exit_i]),
-                "entry": entry,
-                "exit": exit_px,
-                "origin": origin,
-                "extreme": extreme,
-                "why": why,
-                "pnl": pnl,
-            }
-        )
-
-    for hi in sh:
-        knowable = hi + n
-        if knowable >= len(df) - 2:
-            continue
-        lows_before = [j for j in sl if j < hi]
-        if not lows_before:
-            continue
-        lo = lows_before[-1]
-        origin = float(df["low"].iloc[lo])
-        extreme = float(df["high"].iloc[hi])
-        rng = extreme - origin
-        if rng <= 0:
-            continue
-        z_lo = extreme - pct_high * rng
-        z_hi = extreme - pct_low * rng
-        touched = None
-        for i in range(knowable + 1, len(df) - 1):
-            if lows[i] <= z_hi and highs[i] >= z_lo:
-                touched = i
-                break
-            if closes[i] < origin:
-                break
-        if touched is None or touched in used:
-            continue
-        used.add(touched)
-        fill_trade("long", touched, origin, extreme)
-
-    used_s: set[int] = set()
-    for lo in sl:
-        knowable = lo + n
-        if knowable >= len(df) - 2:
-            continue
-        highs_before = [j for j in sh if j < lo]
-        if not highs_before:
-            continue
-        hi = highs_before[-1]
-        origin = float(df["high"].iloc[hi])
-        extreme = float(df["low"].iloc[lo])
-        rng = origin - extreme
-        if rng <= 0:
-            continue
-        z_hi = extreme + pct_high * rng
-        z_lo = extreme + pct_low * rng
-        touched = None
-        for i in range(knowable + 1, len(df) - 1):
-            if lows[i] <= z_hi and highs[i] >= z_lo:
-                touched = i
-                break
-            if closes[i] > origin:
-                break
-        if touched is None or touched in used_s:
-            continue
-        used_s.add(touched)
-        fill_trade("short", touched, origin, extreme)
-    return pd.DataFrame(trades)
-
-
 def run_strategy(spec_path: str | Path, *, root: Path | None = None, network: bool = True, thin: bool = False, stage: str = "discovery") -> Path:
     spec = load_spec(spec_path)
     if spec.get("kind") != "strategy":
@@ -201,36 +85,44 @@ def run_strategy(spec_path: str | Path, *, root: Path | None = None, network: bo
             f"run on this series is thin (n_bars={series.n_bars} < 4000). pass --thin to execute. kept still impossible."
         )
     _require_ask_folders(spec, root)
-    n = int(spec.get("fractal_n") or 5)
-    pct_low = float(spec.get("pct_low") or 0.618)
-    pct_high = float(spec.get("pct_high") or 0.725)
-    commission = float(costs.get("commission_per_side") or 0)
-    trades = _swing_trades(series.df, n, pct_low, pct_high, commission)
-    pnl = float(trades["pnl"].sum()) if len(trades) else 0.0
-    start_px = float(series.df["close"].iloc[0])
-    net_return = pnl / start_px if start_px else 0.0
-    equity = [start_px]
-    if len(trades):
-        running = start_px
-        for x in trades["pnl"].tolist():
-            running += x
-            equity.append(running)
-    dd = _max_dd(equity)
-    metrics = {
-        "kind": "strategy",
-        "spec_id": spec["id"],
-        "n_trades": int(len(trades)),
-        "pnl": round(pnl, 6),
-        "net_return": round(net_return, 6),
-        "max_drawdown_pct": dd,
-        "thin": el.thin,
-        "kept_possible": False if el.thin else el.kept_ok,
-        "not_modeled": NOT_MODELED,
-        "not_computed": NOT_COMPUTED,
-        "execution_ready": False,
-        "note": "placeholder costs. not a live claim. 4h SL/TP from OHLC is optimistic.",
-        "identity": series.identity,
-    }
+    trades = _trades_from_implements(spec, series.df, root=root, symbol=series.symbol)
+    e0 = float(series.df["close"].iloc[0]) if len(series.df) else 0.0
+    exit_i = trades["exit_i"].astype(int).tolist() if len(trades) and "exit_i" in trades.columns else []
+    pnls = trades["pnl"].astype(float).tolist() if len(trades) else []
+    equity = equity_on_bars(int(len(series.df)), e0, exit_i, pnls)
+    n_amb = int(trades["ambiguous"].sum()) if len(trades) and "ambiguous" in trades.columns else 0
+    n_gap = int(trades["gap"].sum()) if len(trades) and "gap" in trades.columns else 0
+    tf = series.timeframe or (spec.get("instrument") or {}).get("timeframe") or "4h"
+    metrics = strategy_metrics(
+        trades=trades,
+        equity=equity,
+        e0=e0,
+        index=series.df.index,
+        timeframe=tf,
+        kill=spec.get("kill") or {},
+        n_ambiguous=n_amb,
+        n_gap=n_gap,
+        symbol=series.symbol,
+        costs=costs,
+    )
+    metrics.update(
+        {
+            "kind": "strategy",
+            "spec_id": spec["id"],
+            "thin": el.thin,
+            "short_window": bool(metrics.get("short_window")),
+            "kept_possible": False if el.thin else bool(metrics.get("kill_pass") and el.kept_ok),
+            "kept": False,
+            "execution_ready": False,
+            "note": (
+                "placeholder costs. not a live claim. "
+                "same-bar stop+target tagged ambiguous and filled at stop. "
+                "gap through a level fills at open. intra-bar path not modeled."
+            ),
+            "identity": series.identity,
+            "implements": spec.get("implements"),
+        }
+    )
     folder = runs_dir(root) / f"{_stamp()}-{spec['id']}-{spec['id'][-8:] if len(spec['id'])>=8 else spec['id']}"
     folder.mkdir(parents=True, exist_ok=True)
     dump_yaml(spec, folder / "spec.yaml")
@@ -247,17 +139,28 @@ def run_strategy(spec_path: str | Path, *, root: Path | None = None, network: bo
         "symbol": series.symbol,
         "thin": el.thin,
         "family": spec.get("family"),
+        "implements": spec.get("implements"),
     }
     if series.symbol in ("SPYUSDT", "QQQUSDT"):
         meta["product"] = "etf_perp"
         meta["not"] = "not ES" if series.symbol == "SPYUSDT" else "not NQ"
     (folder / "meta.json").write_text(json.dumps(meta, indent=2) + "\n")
-    (folder / "metrics.json").write_text(json.dumps(metrics, indent=2) + "\n")
+    (folder / "metrics.json").write_text(json.dumps(metrics, indent=2, default=str) + "\n")
     if len(trades):
         trades.to_csv(folder / "trades.csv", index=False)
     else:
-        pd.DataFrame(columns=["side", "entry_ts", "exit_ts", "entry", "exit", "pnl", "why"]).to_csv(folder / "trades.csv", index=False)
-    (folder / "engine.log").write_text("run next-open fill. not modeled: perp funding, intra-bar path.\n")
+        pd.DataFrame(
+            columns=["side", "entry_ts", "exit_ts", "entry", "exit", "pnl", "why", "ambiguous", "gap"]
+        ).to_csv(folder / "trades.csv", index=False)
+    eq_df = pd.DataFrame({"ts": series.df.index.astype(str), "equity": equity})
+    peak = eq_df["equity"].cummax().replace(0, pd.NA)
+    eq_df["drawdown_pct"] = ((peak - eq_df["equity"]) / peak * 100.0).fillna(0.0)
+    eq_df.to_csv(folder / "equity.csv", index=False)
+    (folder / "engine.log").write_text(
+        f"run implements={spec.get('implements')}. shared fill + metrics. "
+        "not modeled: perp funding, intra-bar path. "
+        "same-bar stop+target: fill stop, tag ambiguous. gap: fill open.\n"
+    )
     (folder / "status.json").write_text(json.dumps({"ok": True, "kind": "strategy", "thin": el.thin}, indent=2) + "\n")
     return folder
 
@@ -290,8 +193,7 @@ def walkforward(spec_path: str | Path, *, root: Path | None = None, network: boo
     rows = []
     for i in range(n_folds):
         sl = df.iloc[: (i + 1) * fold_size] if i < n_folds - 1 else df
-        n = int(spec.get("fractal_n") or 5)
-        trades = _swing_trades(sl, n, float(spec.get("pct_low") or 0.618), float(spec.get("pct_high") or 0.725), float((spec.get("costs") or {}).get("commission_per_side") or 0))
+        trades = _trades_from_implements(spec, sl, root=root, symbol=series.symbol)
         rows.append({"fold": i, "n_bars": int(len(sl)), "n_trades": int(len(trades)), "pnl": float(trades["pnl"].sum()) if len(trades) else 0.0})
     folder = runs_dir(root) / f"{_stamp()}-{spec['id']}-walkforward"
     folder.mkdir(parents=True, exist_ok=True)
@@ -363,7 +265,11 @@ def compare(family: str, *, root: Path | None = None) -> Path:
             "net_return": metrics.get("net_return"),
             "pnl": metrics.get("pnl"),
             "max_drawdown_pct": metrics.get("max_drawdown_pct"),
+            "kill_pass": metrics.get("kill_pass"),
         }
+        for k in ("sharpe", "sortino", "calmar", "cagr", "profit_factor", "expectancy", "win_rate"):
+            if k in metrics and k not in (metrics.get("not_computed") or {}):
+                row[k] = metrics.get(k)
         rows.append(row)
     if not rows:
         raise RunError(f"no discovery strategy runs for family {family}")

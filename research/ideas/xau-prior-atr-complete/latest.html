@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/><title>Themis idea xau-prior-atr-complete</title>
+<style>
+body { font-family: ui-sans-serif, system-ui, sans-serif; background:#0f1115; color:#e8eaed; margin:24px; max-width:960px; }
+.banner span { background:#1e2430; border:1px solid #2c3444; padding:4px 8px; border-radius:4px; font-size:12px; margin-right:6px; }
+table { border-collapse:collapse; margin:16px 0; }
+td,th { border:1px solid #2c3444; padding:6px 10px; font-size:13px; }
+pre { background:#161b22; padding:12px; overflow:auto; font-size:12px; }
+</style></head><body>
+<h1>Gold: how often prior-day ATR is completed (July 2026)</h1>
+<div class="banner"><span>thin: true</span><span>execution_ready: false</span><span>kept: false</span><span>ask / path stats</span><span>not pnl</span></div>
+<p>Binance USD-M <strong>XAUUSDT</strong> perp, not COMEX. Outcome window is the last calendar month of bars actually loaded. August 2026 Vision zip was HTTP 404 from this desk.</p>
+<h2>Rival complete rates</h2>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 192" width="640" height="192">
+<rect width="100%" height="100%" fill="#0f1115"/>
+<text x="12" y="36" fill="#c8cdd8" font-size="12" font-family="ui-sans-serif,system-ui">ATR14 / day_range</text>
+<rect x="220" y="20" width="164.5" height="22" fill="#5b8def" rx="3"/>
+<text x="392.5" y="36" fill="#e8eaed" font-size="12" font-family="ui-sans-serif,system-ui">48.4% ± 17.6%</text>
+<text x="12" y="70" fill="#c8cdd8" font-size="12" font-family="ui-sans-serif,system-ui">ATR20 / day_range</text>
+<rect x="220" y="54" width="153.5" height="22" fill="#5b8def" rx="3"/>
+<text x="381.5" y="70" fill="#e8eaed" font-size="12" font-family="ui-sans-serif,system-ui">45.2% ± 17.5%</text>
+<text x="12" y="104" fill="#c8cdd8" font-size="12" font-family="ui-sans-serif,system-ui">ATR14 / from_open</text>
+<rect x="220" y="88" width="109.7" height="22" fill="#5b8def" rx="3"/>
+<text x="337.7" y="104" fill="#e8eaed" font-size="12" font-family="ui-sans-serif,system-ui">32.3% ± 16.5%</text>
+<text x="12" y="138" fill="#c8cdd8" font-size="12" font-family="ui-sans-serif,system-ui">ATR20 / from_open</text>
+<rect x="220" y="122" width="109.7" height="22" fill="#5b8def" rx="3"/>
+<text x="337.7" y="138" fill="#e8eaed" font-size="12" font-family="ui-sans-serif,system-ui">32.3% ± 16.5%</text>
+</svg>
+<table><thead><tr><th>definition</th><th>n days</th><th>n complete</th><th>rate (Wald 95% CI half-width)</th><th>folder</th></tr></thead>
+<tbody><tr><td>ATR14 / day_range</td><td>31</td><td>15</td><td>48.4% ± 17.6%</td><td><code>20260829T025701Z-xau-atr-complete-atr14-range-bdc0a206</code></td></tr><tr><td>ATR20 / day_range</td><td>31</td><td>14</td><td>45.2% ± 17.5%</td><td><code>20260829T025701Z-xau-atr-complete-atr20-range-0e82332a</code></td></tr><tr><td>ATR14 / from_open</td><td>31</td><td>10</td><td>32.3% ± 16.5%</td><td><code>20260829T025701Z-xau-atr-complete-atr14-fromopen-5f1402d5</code></td></tr><tr><td>ATR20 / from_open</td><td>31</td><td>10</td><td>32.3% ± 16.5%</td><td><code>20260829T025701Z-xau-atr-complete-atr20-fromopen-a8074693</code></td></tr></tbody></table>
+<p>Quote only these folders. A rate is not return. No strategy was run.</p>
+</body></html>

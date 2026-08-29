@@ -1,0 +1,36 @@
+schema: themis.idea.v1
+slug: xau-prior-atr-complete
+title: Prior-day ATR completed on gold, last calendar month of loaded bars
+english_origin: "On Gold, for the last month, how many times the ATR is completed from the previous day, give me the notebook, and the html report"
+created_utc: 2026-08-29T02:57:01Z
+instrument:
+  provider: binance
+  symbol: XAUUSDT
+  timeframe: 4h
+  exchange: binanceusdm
+current:
+  version: 1
+  spec_ids:
+    - xau-atr-complete-atr14-range
+    - xau-atr-complete-atr20-range
+    - xau-atr-complete-atr14-fromopen
+    - xau-atr-complete-atr20-fromopen
+versions:
+  - version: 1
+    english: "On Gold, for the last month, how many times the ATR is completed from the previous day"
+    parent: null
+    named:
+      symbol: XAUUSDT
+      window: last_calendar_month
+    spec_ids:
+      - xau-atr-complete-atr14-range
+      - xau-atr-complete-atr20-range
+      - xau-atr-complete-atr14-fromopen
+      - xau-atr-complete-atr20-fromopen
+    runs:
+      - research/runs/20260829T025701Z-xau-atr-complete-atr14-range-bdc0a206
+      - research/runs/20260829T025701Z-xau-atr-complete-atr20-range-0e82332a
+      - research/runs/20260829T025701Z-xau-atr-complete-atr14-fromopen-5f1402d5
+      - research/runs/20260829T025701Z-xau-atr-complete-atr20-fromopen-a8074693
+    screen: weak
+    screen_note: "n=31 July 2026 days. CI ~±17 points. definition swing is smaller than sampling noise. not pnl. not kept."

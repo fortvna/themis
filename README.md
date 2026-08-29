@@ -20,7 +20,7 @@ you:  if from that retracement I target 1:1 R, what is the return?
       → if stop / bounce / impulse are still vague, the agent does
         more pandas asks (MAE/MFE, where price dies, rival definitions)
       → those folders decide the strategy YAML — not a guess, not a quiz
-      → then Python + backtest
+      → then pandas bar-loop + metrics.py
       → run folder: return, pnl, drawdown, calmar, cagr, sortino, …
 
 you:  create the strategy and backtest
@@ -29,8 +29,6 @@ you:  create the indicator / alert
 
       → only after a hypothesis is kept
 ```
-
-YAML is **not** executable. It is how a question or a trade is structured so pandas or a hand-written strategy can be run without the model inventing numbers. An agent writes the YAML, then writes the pandas or `backtesting.py` code that implements it.
 
 v1 venue is **Binance USD-M** (`binanceusdm`). Series: `XAUUSDT` (gold perp, not COMEX), `BTCUSDT`, `SOLUSDT`, `SPYUSDT` (ETF perp, not ES), `QQQUSDT` (ETF perp, not NQ). Same ticker on another venue is a different series.
 
@@ -42,12 +40,12 @@ v1 venue is **Binance USD-M** (`binanceusdm`). Series: `XAUUSDT` (gold perp, not
 | YAML | Structure only: what to measure, or what the trade is. |
 | Data | **v1: Binance USD-M.** csv, Vision (first-class), optional ccxt. You name the series. Gold 4h → this venue’s `XAUUSDT` perp. |
 | `ask` | pandas on the YAML. Counts, bounce rates, percentiles. No pnl. |
-| `run` | Hand-written strategy from the YAML, through `backtesting.py`. |
+| `run` | Load `implements` (family template). Shared fill + `metrics.py`. YAML is not executed. |
 | `compare` / `tune` | Several cousins. Optimize = new spec ids, same family. |
 | Indicator / alert | After a spec is **kept**. Visual or alert twin of that spec. Not a shortcut around the backtest. |
 | Runs | Only numbers anyone may quote. |
 
-An agent may turn English into YAML and code. It must not invent a 70%, a return, or “this looks profitable.” If a metric is not in a run folder, it is unknown.
+An agent may turn English into YAML and point `implements` at a family module. It must not invent a 70%, a return, or “this looks profitable.” If a metric is not in a run folder, it is unknown. YAML is **not** executable. Same shape, new numbers → same `implements`, numbers on the YAML. New kind (ORB, FVG, Po3) → a new family module, or `needs_human`. Not a new `.py` per chat line. Not a silent 0.618 in the runner.
 
 ## How the agent fills in the gaps
 
@@ -95,7 +93,7 @@ Do not build a warehouse. Do not backfill every venue in advance. Do not merge t
 4. A lookalike is still that venue’s product. Binance `XAUUSDT` ≠ another venue’s `XAUUSDT` ≠ `XAUT` ≠ `PAXG` ≠ COMEX. Do not relabel. SPY/QQQ reports say ETF perp, never ES/NQ.
 5. Forex spot and cash/futures indices are **not** this book (except a venue’s own named perp, which must stay labeled). Do not fetch Yahoo/`EURUSD=X` / `NQ=F`.
 
-Colab is a fine desk. The notebook is scratch. The run folder is the record.
+Colab is a fine desk. A notebook, if you generate one, is a **replay of a run folder**. It is not the hypothesis and not where ratios are computed. The run folder is the record.
 
 ## Hard rules
 
@@ -117,9 +115,11 @@ Colab is a fine desk. The notebook is scratch. The run folder is the record.
 | English → YAML | `themis compile` (default backend `mock`). Live `xai`/`openai` after `themis login`. Skill file later. |
 | Bars | Binance USD-M via Vision or CSV (optional ccxt) |
 | Behavior | pandas (polars optional) |
-| Trade / optimize | `backtesting.py` + declared search space |
+| Trade / optimize | `implements` family + `themis.fill` + `metrics.py` (§18) + declared search space |
 | Indicator / alert | After kept — e.g. a Pine twin of the winning spec |
-| Where | local Python 3.11+ (Colab optional) |
+| Where | local Python 3.11+ **inside `research/python/.venv`** (Colab optional) |
+
+Python packages live **only** in that repo env. Bootstrap: `cd research/python && ./bootstrap.sh`. Do not `pip install --user`, do not sudo pip, do not use Apple’s Command Line Tools interpreter as the desk.
 
 No DuckDB warehouse. No “download everything first.”
 
@@ -129,8 +129,8 @@ No DuckDB warehouse. No “download everything first.”
 research/
   questions/      question YAML (structure for ask)
   specs/          strategy YAML (structure for the Python port)
-  python/         themis: fetch, ask, run, compare, report
-  notebooks/      optional Colab twins; not the record
+  python/         themis + .venv (never global pip); strategies/ = family templates
+  notebooks/      optional replay of a run folder; not the record
   runs/           one folder per attempt
   reports/        Markdown from runs
 docs/             open-spec.md and research notes
