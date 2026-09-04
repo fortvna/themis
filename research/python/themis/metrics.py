@@ -10,7 +10,6 @@ import pandas as pd
 NOT_MODELED = [
     "perp funding",
     "intra-bar stop/target path",
-    "real fees until costs are written as live",
 ]
 
 # Binance USD-M v1 books. Overridden by costs.tick_size when written.
