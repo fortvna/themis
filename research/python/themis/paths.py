@@ -46,3 +46,7 @@ def specs_dir(root: Path | None = None) -> Path:
 
 def python_dir(root: Path | None = None) -> Path:
     return research_dir(root) / "python"
+
+
+def ideas_dir(root: Path | None = None) -> Path:
+    return research_dir(root) / "ideas"
