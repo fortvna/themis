@@ -71,11 +71,11 @@ Grok Build runs that path via `/themis-loop` (`.grok/skills/themis-loop/SKILL.md
 
 Every `ask` writes Markdown + **HTML** + a **notebook**. HTML is the review. The notebook is a live call of `themis.ask` (Themis .venv) so you can redefine the ask on a new spec id. All math stays in Python. Do not quote an edited cell.
 
-Notebooks use the **Themis (.venv)** kernel, registered *inside* `research/python/.venv` (`ipykernel install --sys-prefix`). Never `--user`. Never Apple’s Python.
+Notebooks declare kernel **python3** so Cursor/VS Code Execute Cell can bind to a Python environment. `ipykernel` lives *inside* `research/python/.venv`. Never `pip install --user`. Never Apple’s Python.
 
-Workspace settings (`.vscode/settings.json`) point the interpreter at that venv. Open a notebook, pick **Themis (.venv)** once if asked — it is this tree, not a global kernel.
+Workspace settings point the interpreter at that venv. Bootstrap also makes `/.venv` a symlink to `research/python/.venv` so the editor finds it at the workspace root.
 
-If the picker is empty, re-run `./bootstrap.sh`.
+Enable the suggested extensions: **Python**, **Pylance**, **Jupyter**. Then pick interpreter `research/python/.venv/bin/python` (Command Palette → Python: Select Interpreter). Execute Cell should use that environment. Do not let the UI pip-install into system Python.
 
 ## Run tests
 

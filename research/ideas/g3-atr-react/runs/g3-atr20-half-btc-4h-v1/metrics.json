@@ -1,0 +1,23 @@
+{
+  "kind": "question",
+  "spec_id": "g3-atr20-half-btc-4h-v1",
+  "n_days": 814,
+  "n_touch_plus33": 495,
+  "n_touch_minus33": 522,
+  "react_plus": 0.3394,
+  "react_minus": 0.3046,
+  "atr_n": 20,
+  "react": "half_atr",
+  "note": "condition knowable at prior daily close. not a trade.",
+  "identity": {
+    "provider": "binance",
+    "symbol": "BTCUSDT",
+    "exchange": "binanceusdm",
+    "timeframe": "4h",
+    "source": "csv",
+    "row_count": 5000,
+    "actual_start": "2022-01-01 00:00:00+00:00",
+    "actual_end": "2024-04-13 04:00:00+00:00"
+  },
+  "n_bars": 5000
+}

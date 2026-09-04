@@ -465,6 +465,8 @@ def test_write_idea_bundle_generic_rates(tmp_path: Path):
     assert "See latest.html and latest.ipynb." in md
     nb = (idea_dir / "latest.ipynb").read_text()
     assert "themis.ask.measure" in nb
+    assert '"name": "python3"' in nb
+    assert "metrics.json" in nb
     assert "atr_complete_rivals" not in nb
     assert "react_plus" in nb
     assert "react_minus" in nb
@@ -535,6 +537,7 @@ def test_write_idea_bundle_includes_g3_react_rates(tmp_path: Path):
     nb = written["ipynb"].read_text()
     assert "react_plus" in nb
     assert "react_minus" in nb
+    assert "metrics.json" in nb
     assert "themis.ask.measure" in nb
     assert "atr_complete_rivals" not in nb
 
@@ -673,6 +676,42 @@ def test_run_idea_loop_ask_fail_improve_keeps_history(tmp_path: Path, monkeypatc
     assert idea["versions"][1]["runs"] == []
     assert "ask failed" in (idea["versions"][1].get("screen_note") or "")
     assert "improve boom" in (idea["versions"][1].get("screen_note") or "")
+
+
+def test_g3_atr_react_prove_package_is_tracked():
+    """Vendored prove runs travel with git. No gitignored research/runs/ paths."""
+    root = Path(__file__).resolve().parents[3]
+    idea_dir = root / "research" / "ideas" / "g3-atr-react"
+    idea = load_idea("g3-atr-react", root=root)
+    runs = list((idea.get("versions") or [{}])[-1].get("runs") or [])
+    assert runs, "g3-atr-react must list prove run folders"
+    html = (idea_dir / "latest.html").read_text()
+    nb = (idea_dir / "latest.ipynb").read_text()
+    assert "BTCUSDT" in html
+    assert "metrics.json" in nb
+    for rel in runs:
+        assert rel.startswith("research/ideas/g3-atr-react/runs/"), rel
+        assert not rel.startswith("research/runs/"), rel
+        folder = root / rel
+        assert folder.is_dir(), rel
+        metrics_p = folder / "metrics.json"
+        assert metrics_p.exists(), rel
+        assert (folder / "meta.json").exists(), rel
+        assert (folder / "spec.yaml").exists(), rel
+        metrics = json.loads(metrics_p.read_text())
+        rp = metrics.get("react_plus")
+        rm = metrics.get("react_minus")
+        assert rp is not None and rm is not None, rel
+        assert f"react_plus={float(rp):.1%}" in html
+        assert f"react_minus={float(rm):.1%}" in html
+        assert rel in nb
+    from themis.report import write_idea_bundle
+
+    written = write_idea_bundle("g3-atr-react", root=root)
+    html2 = written["html"].read_text()
+    for rel in runs:
+        metrics = json.loads((root / rel / "metrics.json").read_text())
+        assert f"react_plus={float(metrics['react_plus']):.1%}" in html2
 
 
 def test_cli_idea_defaults_gold():

@@ -3,6 +3,5 @@
   "python.venvPath": "${workspaceFolder}/research/python",
   "python.terminal.activateEnvironment": true,
   "python.analysis.extraPaths": ["${workspaceFolder}/research/python"],
-  "jupyter.notebookFileRoot": "${workspaceFolder}",
-  "notebook.defaultKernel": "themis"
+  "jupyter.notebookFileRoot": "${workspaceFolder}"
 }

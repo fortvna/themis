@@ -12,6 +12,8 @@ build/
 research/.cache/
 research/runs/*
 !research/runs/.gitkeep
+# Frozen prove packages under ideas are tracked. Live asks still write to research/runs/.
+!research/ideas/**/runs/**
 research/jobs/*
 !research/jobs/.gitkeep
 *.csv

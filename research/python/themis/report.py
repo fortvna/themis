@@ -175,6 +175,23 @@ td,th {{ border:1px solid #2c3444; padding:6px 10px; font-size:13px; }}
     return out
 
 
+# Cursor/VS Code Jupyter binds Execute Cell to a Python *environment* kernel
+# named python3. A custom name ("themis") is invisible unless the picker finds
+# a matching Jupyter kernelspec, so generated notebooks use python3 and the
+# workspace interpreter (research/python/.venv).
+_NOTEBOOK_KERNELSPEC = {
+    "display_name": "Python 3 (Themis .venv)",
+    "language": "python",
+    "name": "python3",
+}
+_NOTEBOOK_LANGUAGE_INFO = {
+    "name": "python",
+    "file_extension": ".py",
+    "mimetype": "text/x-python",
+    "pygments_lexer": "ipython3",
+}
+
+
 _IDEA_RATE_KEYS = (
     "bounce_rate",
     "complete_rate",
@@ -333,12 +350,8 @@ metrics"""
         "nbformat": 4,
         "nbformat_minor": 5,
         "metadata": {
-            "kernelspec": {
-                "display_name": "Themis (.venv)",
-                "language": "python",
-                "name": "themis",
-            },
-            "language_info": {"name": "python", "pygments_lexer": "ipython3"},
+            "kernelspec": dict(_NOTEBOOK_KERNELSPEC),
+            "language_info": dict(_NOTEBOOK_LANGUAGE_INFO),
         },
         "cells": cells,
     }
@@ -439,7 +452,7 @@ def _code(text: str) -> dict:
 
 
 def write_idea_notebook(slug: str, folders: list[Path], *, root: Path | None = None, english: str = "") -> Path:
-    """Representation of Python ask logic. Cells call themis.ask.measure; they do not reimplement it."""
+    """Representation of Python ask logic. Quote metrics.json first; optional measure if cache exists."""
     import json as _json
 
     root = root or research_root()
@@ -455,14 +468,17 @@ def write_idea_notebook(slug: str, folders: list[Path], *, root: Path | None = N
         _md(
             f"""# Idea `{slug}`
 
-This notebook **represents** `themis.ask.measure` on the frozen specs for this idea. Kernel: Themis (.venv).
+This notebook **represents** frozen run folders for this idea. Kernel: Python 3 (Themis .venv).
 
 English: *{english}*
 
-To **redefine the ask**: `themis idea improve --name {slug}` (new spec ids, same slug). Do not edit a rate in a cell and quote it. The run folder wins."""
+The first code cell loads `metrics.json` from those folders (no network, no cache). Optional re-measure below needs the series cache; skip if missing. Do not edit a rate in a cell and quote it. The folder wins.
+
+To **redefine the ask**: `themis idea improve --name {slug}` (new spec ids, same slug)."""
         ),
         _code(
             f"""from pathlib import Path
+import json
 import os
 
 here = Path.cwd()
@@ -472,34 +488,57 @@ while repo != repo.parent and not (repo / "docs" / "open-spec.md").exists():
 os.environ["THEMIS_ROOT"] = str(repo)
 os.chdir(repo)
 
-from themis.spec import load_spec
+RUNS = {rels!r}
+SUMMARY_KEYS = {summary_keys!r}
+
+frozen = []
+for rel in RUNS:
+    run = repo / rel
+    mp = run / "metrics.json"
+    metrics = json.loads(mp.read_text()) if mp.exists() else {{}}
+    frozen.append(
+        (
+            rel,
+            metrics.get("spec_id") or run.name,
+            {{k: metrics.get(k) for k in SUMMARY_KEYS if k in metrics}},
+        )
+    )
+frozen"""
+        ),
+        _md(
+            """Chat quotes the `metrics.json` rows above. Optional cell: `themis.ask.measure` only if the series cache is present."""
+        ),
+        _code(
+            """from themis.spec import load_spec
 from themis.data import load_from_spec
 from themis.ask import measure
 
-RUNS = {rels!r}
-rows = []
+remeasured = []
 for rel in RUNS:
     run = repo / rel
-    spec = load_spec(run / "spec.yaml")
-    series = load_from_spec(spec, root=repo, network=False)
-    metrics, table = measure(spec, series)
-    rows.append((spec.get("id"), series.identity, metrics, table))
-[(r[0], r[1], {{k: r[2].get(k) for k in {summary_keys!r} if k in r[2]}}) for r in rows]"""
+    spec_p = run / "spec.yaml"
+    if not spec_p.exists():
+        remeasured.append((rel, "skip: no spec.yaml"))
+        continue
+    spec = load_spec(spec_p)
+    try:
+        series = load_from_spec(spec, root=repo, network=False)
+        metrics, _table = measure(spec, series)
+        remeasured.append((spec.get("id"), {k: metrics.get(k) for k in SUMMARY_KEYS if k in metrics}))
+    except Exception as e:
+        remeasured.append((rel, f"skip: {type(e).__name__}: {e}"))
+remeasured"""
         ),
         _md(
-            """Chat quotes `research/runs/<id>/metrics.json`. If a cell disagrees with the folder, the folder wins until you freeze a new spec."""
+            """If re-measure disagrees with `metrics.json`, the folder wins until you freeze a new spec."""
         ),
     ]
     nb = {
         "nbformat": 4,
         "nbformat_minor": 5,
         "metadata": {
-            "kernelspec": {
-                "display_name": "Themis (.venv)",
-                "language": "python",
-                "name": "themis",
-            },
-            "language_info": {"name": "python", "pygments_lexer": "ipython3"},
+            "kernelspec": dict(_NOTEBOOK_KERNELSPEC),
+            "language_info": dict(_NOTEBOOK_LANGUAGE_INFO),
         },
         "cells": cells,
     }
