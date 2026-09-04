@@ -1,0 +1,91 @@
+95(float(rate), nn) if rate is not None else None,
+        "atr_n": atr_n,
+        "complete_def": complete_def,
+        "window_start": str(table.index.min()) if nn else None,
+        "window_end": str(table.index.max()) if nn else None,
+        "median_range_over_atr": (
+            round(float(table["range_over_atr"].median()), 4)
+            if nn and "range_over_atr" in table.columns
+            else None
+        ),
+    }
+
+
+def atr_complete_rivals(
+    df: pd.DataFrame,
+    *,
+    rivals: tuple[dict[str, Any], ...] | list[dict[str, Any]] | None = None,
+    window: str = "last_calendar_month",
+) -> tuple[pd.DataFrame, dict[tuple[int, str], pd.DataFrame]]:
+    """All unnamed-key rivals. Logic here; notebook only displays."""
+    spec = tuple(rivals) if rivals is not None else ATR_COMPLETE_RIVALS
+    tables: dict[tuple[int, str], pd.DataFrame] = {}
+    rows = []
+    for r in spec:
+        n = int(r["atr_n"])
+        how = str(r["complete"])
+        t = atr_complete_table(df, atr_n=n, complete=how, window=window)
+        tables[(n, how)] = t
+        rows.append(atr_complete_summary(t))
+    return pd.DataFrame(rows), tables
+
+
+def plot_range_vs_prior_atr(table: pd.DataFrame, *, title: str | None = None):
+    """Display helper. No hypothesis math."""
+    ax = table[["day_range", "prior_atr"]].plot(
+        figsize=(10, 4),
+        title=title or "daily range vs prior-day ATR",
+    )
+    ax.set_ylabel("price points")
+    return ax
+
+
+def measure(spec: dict[str, Any], series: SeriesLoad) -> tuple[dict[str, Any], pd.DataFrame]:
+    df = series.df
+    kind = spec.get("measure") or (spec.get("condition") or [{}])[0].get("kind")
+    extra = spec
+    table = pd.DataFrame()
+    metrics: dict[str, Any] = {"kind": "question", "spec_id": spec.get("id")}
+
+    if kind == "swing_retrace" or kind == "retracement_zone" and extra.get("fractal_n"):
+        n = int(extra.get("fractal_n") or (spec.get("condition") or [{}])[0].get("fractal_n") or 5)
+        pct_low = float(extra.get("pct_low") or (spec.get("condition") or [{}])[0].get("pct_low") or 0.618)
+        pct_high = float(extra.get("pct_high") or (spec.get("condition") or [{}])[0].get("pct_high") or 0.725)
+        ev = swing_retrace_events(df, n, pct_low, pct_high)
+        table = ev
+        nn = int(len(ev))
+        metrics.update({
+            "n": nn,
+            "target_rate": round(float(ev["target_first"].mean()), 4) if nn else None,
+            "stop_rate": round(float(ev["stop_first"].mean()), 4) if nn else None,
+            "neither_rate": round(float((~ev["target_first"] & ~ev["stop_first"]).mean()), 4) if nn else None,
+            "target_rate_ci95": ci95(float(ev["target_first"].mean()), nn) if nn else None,
+            "stop_rate_ci95": ci95(float(ev["stop_first"].mean()), nn) if nn else None,
+            "fractal_n": n,
+            "note": "path stats only. not pnl. not edge.",
+        })
+        if extra.get("want_mae_mfe") and nn:
+            metrics["median_mae"] = round(float(ev["mae"].median()), 4)
+            metrics["median_mfe"] = round(float(ev["mfe"].median()), 4)
+        return _strip_pnl(metrics), table
+
+    if kind in ("bounce_retrace", "reaction_horizon") or extra.get("question_ref") in ("R1", "R2", "R3"):
+        pct_raw = _spec_field(extra, "retrace_pct")
+        if pct_raw is None:
+            raise AskError("bounce_retrace requires retrace_pct; no silent default")
+        n_imp = int(_spec_field(extra, "impulse_bars", 12))
+        k_atr = float(_spec_field(extra, "impulse_atr", 1.5))
+        bounce_how = str(_spec_field(extra, "bounce", "through_50"))
+        n_atr = int(_spec_field(extra, "atr_n", 14))
+        pct = float(pct_raw)
+        horizon = extra.get("horizon_bars")
+        if horizon is None:
+            horizon = _spec_field(extra, "horizon_bars")
+        ev = bounce_retrace_events(
+            df,
+            impulse_bars=n_imp,
+            impulse_atr=k_atr,
+            retrace_pct=pct,
+            bounce=bounce_how,
+            atr_n=n_atr,
+      
