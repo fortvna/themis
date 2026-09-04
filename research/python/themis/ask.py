@@ -220,8 +220,7 @@ def bounce_retrace_events(
       through_50 — close back through the midpoint of origin and extreme
       atr — favorable excursion of 1*ATR from the zone, ATR knowable at touch
     Horizon, if set, caps bars after touch (inclusive of the touch bar as 0).
-    Same-bar close through origin is invalidation (pessimistic, no 
-bounce).
+    Same-bar close through origin is invalidation (pessimistic, no bounce).
     """
     n = int(impulse_bars)
     k = float(impulse_atr)
@@ -327,8 +326,7 @@ bounce).
                 rng = extreme_px - origin_px
                 if rng > 0 and rng >= thresh:
                     cand.append(("long", origin_px, extreme_px, rng))
-        if len(win_l) >= 2 and win_l[
--1] <= win_l[:-1].min():
+        if len(win_l) >= 2 and win_l[-1] <= win_l[:-1].min():
             rel_hi = int(np.argmax(win_h))
             if rel_hi < n - 1:
                 origin_px = float(win_h[rel_hi])
@@ -438,8 +436,7 @@ def atr_complete_summary(table: pd.DataFrame) -> dict[str, Any]:
         "n_days": nn,
         "n_complete": k,
         "complete_rate": None if rate is None else round(float(rate), 4),
-        "complete_rate_ci95": ci
-95(float(rate), nn) if rate is not None else None,
+        "complete_rate_ci95": ci95(float(rate), nn) if rate is not None else None,
         "atr_n": atr_n,
         "complete_def": complete_def,
         "window_start": str(table.index.min()) if nn else None,
@@ -727,8 +724,7 @@ def measure(spec: dict[str, Any], series: SeriesLoad) -> tuple[dict[str, Any], p
     return _strip_pnl(metrics), d.reset_index(names="ts")
 
 
-def run_ask(spec_path: str | Path, *, root: Path | None = None, network: bool = True, stage: 
-str = "discovery") -> Path:
+def run_ask(spec_path: str | Path, *, root: Path | None = None, network: bool = True, stage: str = "discovery") -> Path:
     spec = load_spec(spec_path)
     if spec.get("kind") != "question":
         raise AskError("ask rejects strategy specs")
