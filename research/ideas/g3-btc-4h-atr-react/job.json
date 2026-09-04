@@ -1,0 +1,53 @@
+{
+  "schema": "themis.job.v1",
+  "status": "ok",
+  "case_id": "G3",
+  "path": "ask",
+  "note": "ATR 14 vs 20; react close-through vs 0.5 ATR",
+  "source": {
+    "english": "Prior-day ATR, lines at -33% and +33%, does price react",
+    "media": [],
+    "compiler": "mock",
+    "model": "mock"
+  },
+  "instrument": {
+    "provider": "binance",
+    "symbol": "BTCUSDT",
+    "timeframe": "4h",
+    "exchange": "binanceusdm"
+  },
+  "plan": [
+    {
+      "kind": "question",
+      "id": "g3-atr14-through-btc-4h-v1",
+      "purpose": "rival_definition"
+    },
+    {
+      "kind": "question",
+      "id": "g3-atr20-through-btc-4h-v1",
+      "purpose": "rival_definition"
+    },
+    {
+      "kind": "question",
+      "id": "g3-atr14-half-btc-4h-v1",
+      "purpose": "rival_definition"
+    },
+    {
+      "kind": "question",
+      "id": "g3-atr20-half-btc-4h-v1",
+      "purpose": "rival_definition"
+    }
+  ],
+  "gates": {
+    "freeze_yaml_before_metrics": true,
+    "rivals_min": 2,
+    "ask_before_run": true,
+    "tune_requires": "walkforward_eligible",
+    "named_fields_pinned": true
+  },
+  "single_winner": false,
+  "refuse_tune_on_thin": false,
+  "named": {
+    "retrace_pct": 0.33
+  }
+}

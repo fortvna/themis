@@ -1,0 +1,64 @@
+id: g3-atr20-through-btc-4h-v1
+kind: question
+title: Prior-day ATR 20, ±33%, react=through
+instrument:
+  symbol: BTCUSDT
+  venue: binance
+  provider: binance
+  timeframe: 4h
+  timezone: UTC
+  exchange: binanceusdm
+data:
+  provider: binance
+  source: vision
+  exchange: binanceusdm
+  identity_note: Binance USD-M BTCUSDT perp.
+  cache_path: research/.cache/binance/binanceusdm/BTCUSDT/4h.csv
+  cache_sha256: 7460bb53204fac0c7030ca951d08116ff521eaf1d615866a53b54b7343d42f62
+  n_bars: 14610
+  actual_start: '2020-01-01 00:00:00+00:00'
+  actual_end: '2026-08-31 20:00:00+00:00'
+  load_note: observed loaded bars from shared BTCUSDT 4h vision cache; not a pre-registered
+    holdout
+discovery:
+  start: null
+  end: null
+  note: use all loaded bars of this series; do not invent missing years
+holdout:
+  start: null
+  end: null
+  note: holdout null until bars can lock a tail without emptying discovery
+population: session_days
+condition:
+- kind: atr_levels
+  atr_n: 20
+  pct: 0.33
+  react: through
+outcome:
+  name: react_flag
+  kind: flag
+definitions:
+  atr: daily ATR length 20, knowable at prior daily close
+  line_hi: prior_close + 0.33 * prior_atr
+  line_lo: prior_close - 0.33 * prior_atr
+  react: close back through the line
+stats:
+- n_days
+- n_touch_plus33
+- n_touch_minus33
+- react_plus
+- react_minus
+forbidden:
+- forming_bar_signals
+- future_as_condition
+- quoting_pnl_from_this_ask
+- inventing_metrics_in_chat
+measure: atr_react
+question_ref: G3
+family: g3-btc-4h-v1
+atr_n: 20
+react: through
+named:
+  retrace_pct: 0.33
+pct_low: 0.33
+pct_high: 0.33

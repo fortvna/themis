@@ -1,0 +1,26 @@
+schema: themis.idea.v1
+slug: g3-btc-4h-atr-react
+title: G3 prior-day ATR ±33% react on BTCUSDT 4h
+english_origin: Prior-day ATR, lines at -33% and +33%, does price react
+created_utc: '2026-09-04T01:34:21Z'
+instrument:
+  provider: binance
+  symbol: BTCUSDT
+  timeframe: 4h
+  exchange: binanceusdm
+costs_law: themis.fees — ask does not charge; later run would use fee_schedule
+cache_sha256: 7460bb53204fac0c7030ca951d08116ff521eaf1d615866a53b54b7343d42f62
+current:
+  version: 1
+  spec_ids: &id001
+  - g3-atr14-through-btc-4h-v1
+  - g3-atr20-through-btc-4h-v1
+  - g3-atr14-half-btc-4h-v1
+  - g3-atr20-half-btc-4h-v1
+versions:
+- version: 1
+  english: Prior-day ATR, lines at -33% and +33%, does price react
+  parent: null
+  spec_ids: *id001
+  screen: null
+  screen_note: ask only. react rates are outcomes, not edge.
