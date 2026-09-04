@@ -7,7 +7,7 @@ Claims: VERIFIED | ASSUMED | UNKNOWN.
 
 Detail law stays in `docs/open-spec.md` (formulas, prompt text, bank rows). This file is what Caesar accepts and Vulcan implements. Do not invent behavior missing a MUST here.
 
-Opened 2026-08-28. Revision **2026-08-28e** (ask review): `ask` / `report` write Markdown + HTML + a Python notebook. The notebook represents `themis.ask`; use it to redefine the ask (new spec id). See open-spec §19.
+Opened 2026-08-28. Revision **2026-09-03** (loop skill): `themis idea` is the conversation command; `.grok/skills/themis-loop/` is how Grok Build runs it. Revision **2026-08-28e** (ask review): `ask` / `report` write Markdown + HTML + a Python notebook. The notebook represents `themis.ask`; use it to redefine the ask (new spec id). See open-spec §19.
 
 Revision **2026-08-28d** (family templates): `run` loads `implements`; same shape / new numbers stay on YAML; new kind needs a new family module. See open-spec §6.
 
@@ -92,6 +92,7 @@ JTBD: (1) name the idea (2) YAML freeze (3) pandas screen (4) dual report with c
 | F-53 | MUST | `idea list`, `idea show --name`, `idea improve --name --english`, `report --idea`. Improve = new version, new spec ids, parent preserved. | §17 |
 | F-54 | MUST | Ask screen labels `dead` \| `weak` \| `continue` from folder rates/CIs as §17 table. Run screen `fail_kill` \| `weak` \| `candidate`. Screens are not `kept`. | §17 |
 | F-55 | MUST | Unknown English with named trade fields is an idea, not `needs_human`. No named fields and no bank match → `needs_human`. | §17 |
+| F-56 | MUST | Project skill `.grok/skills/themis-loop/SKILL.md` (`/themis-loop`). Agent runs `research/python/.venv/bin/themis idea` with a named series. Chat still does not invent metrics. | §17 |
 
 ### Metrics canon
 
@@ -156,7 +157,7 @@ JTBD: (1) name the idea (2) YAML freeze (3) pandas screen (4) dual report with c
 
 ## 7. Non-goals
 
-Live broker; warehouse; yfinance; fourth venue; indicator before kept; skill package; genetic “make it profitable”; answering return from an ask table; `min_sharpe` kill; ES/NQ labels on SPY/QQQ; fixtures/tokens in git; silent slug suffix; overwriting parent idea YAML. VERIFIED §14, §17.
+Live broker; warehouse; yfinance; fourth venue; indicator before kept; genetic “make it profitable”; answering return from an ask table; `min_sharpe` kill; ES/NQ labels on SPY/QQQ; fixtures/tokens in git; silent slug suffix; overwriting parent idea YAML. VERIFIED §14, §17. The loop skill is in-scope (F-56).
 
 ## 8. Data and privacy
 
@@ -193,6 +194,7 @@ Vulcan does not start M1 until Caesar accepts this SPEC. Stack is already named 
 ## 12. Acceptance ideas
 
 - `themis idea --english "1h gold retrace 61.8 stop low+1 ATR TP high"` writes a slug, ≥2 rival asks, `idea.yaml`, MD+HTML. No pnl on ask folders.
+- `/themis-loop` skill is in `.grok/skills/themis-loop/SKILL.md` and names the venv binary.
 - Same English with YAML stop `low − ATR` → compile error (F-24).
 - Strategy HTML has equity, DD, PnL hist. Ask HTML has rate bars.
 - `metrics.json` has sharpe/sortino/calmar or `not_computed` reasons. Ask JSON has none of those keys.

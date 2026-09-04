@@ -7,6 +7,8 @@ Vulcan forges from this document. Fixtures, event tables, and Vision CSVs stay o
 
 Canon pointer: root `SPEC.md`. This file is the implementation spec.
 
+Revision 2026-09-03 (loop skill): the conversation command is `themis idea`. Project skill `.grok/skills/themis-loop/SKILL.md` (`/themis-loop`) is how Grok Build runs that command with the repo venv and a named series. Chat still does not invent numbers.
+
 Revision 2026-08-28e (ask review): every `ask` ships a notebook **and** HTML with the run folder. Logic stays in Python (`themis.ask`). The notebook is a live representation so the operator can review definitions and **redefine the ask** (new spec id, same idea slug). HTML is the desk view. Markdown + `metrics.json` remain quoteable. Chat still does not invent numbers.
 
 Revision 2026-08-28d (family templates): `run` loads `implements` and calls `trades(spec, df, ...)`. Same shape, new numbers → same module, numbers in YAML. New kind → new `strategies/<family>.py` or `needs_human`. No silent 0.618 in the runner.
@@ -489,11 +491,12 @@ Allowed: Python 3.11+, `pandas`, `numpy`, `pyyaml`, `ccxt` (optional), stdlib ur
 
 The v1 `run` path is: load `implements` → family `trades()` → shared `themis.fill` → `metrics.py`. The runner does not own a retrace. It does not accrue perp funding. Same-bar SL/TP is tagged and filled at the stop; a gap through a level fills at open. Costs are placeholders until Amir writes fees. Net return is not a live claim. kernc `backtesting.py` is not canon and is not a dependency.
 
-No skill directory this pass. No Colab required (optional twin later). No Docker trading OS.
+Project skill `.grok/skills/themis-loop/` is in-scope so Grok Build can run `themis idea`. No Colab required (optional twin later). No Docker trading OS.
 
 ## 12. Tree (when implemented)
 
 ```
+.grok/skills/themis-loop/SKILL.md   # Grok Build: run themis idea, quote folders
 research/
   questions/
   specs/
@@ -539,12 +542,13 @@ Not tonight's build until Caesar releases the hammer. When released, local layou
 8. `metrics.py` on every strategy `run`: PnL, net return, max DD, CAGR, Sharpe, Sortino, Calmar, profit factor, expectancy, win rate, payoff (§18). Missing names get a reason, not a silent skip.
 9. Dual `report`: Markdown stays the quoteable artifact; HTML embeds equity / underwater / PnL hist / rival-rate bars from that folder only.
 10. Idea registry: `themis idea` names a slug, asks, screens, recalls, improves without overwriting parents. Compiler prompt in live.py is the §20 text.
+11. Project skill `.grok/skills/themis-loop/` so Grok Build runs that loop with the repo venv.
 
-Stop when: mock-compile the §9 bank → YAML first → ask-rows write folders → B0/G1/G4 freeze without pnl → F1–F4 `needs_human` → A1–A2 error → and a BTC or SOL `run` can write after-cost metrics from a folder → `report` writes `.md` and `.html` with graphics → an idea slug can be listed and improved. Indicator waits.
+Stop when: mock-compile the §9 bank → YAML first → ask-rows write folders → B0/G1/G4 freeze without pnl → F1–F4 `needs_human` → A1–A2 error → and a BTC or SOL `run` can write after-cost metrics from a folder → `report` writes `.md` and `.html` with graphics → an idea slug can be listed and improved → `/themis-loop` exists. Indicator waits.
 
 ## 14. Cut
 
-Indicator/alert as a first step, skill package, warehouse, live/broker, yfinance, genetic search, answering return from an ask table, freezing prompt.md dates, calling a paid SDK, spending, putting fixtures or Vision CSVs on git, putting OAuth tokens in git. `questions.md` is a compile test bank, not extra product to invent.
+Indicator/alert as a first step, warehouse, live/broker, yfinance, genetic search, answering return from an ask table, freezing prompt.md dates, calling a paid SDK, spending, putting fixtures or Vision CSVs on git, putting OAuth tokens in git. `questions.md` is a compile test bank, not extra product to invent. The loop skill is not cut.
 
 ## 15. Acceptance
 
@@ -561,7 +565,7 @@ Indicator/alert as a first step, skill package, warehouse, live/broker, yfinance
 11. No metric printed except from a run folder.
 12. Mock compiler never networks. Live backends never run without `themis login` for that provider. Tokens never enter git.
 13. SPY/QQQ reports never say ES/NQ.
-14. No skill directory. No fixtures in git.
+14. Project skill `.grok/skills/themis-loop/SKILL.md` exists. No fixtures in git.
 15. Strategy `run` writes Sharpe, Sortino, Calmar, CAGR, profit factor, expectancy from equity/trades, or lists each missing name with a reason. Ask folders still have no pnl keys.
 16. `themis report --run` writes `research/reports/<run>.md` and `research/reports/<run>.html`. HTML contains at least one graphic built from that folder (ask: rival rates; strategy: equity curve). No CDN. Ask folders also write `research/reports/<run>.ipynb` (Themis .venv kernel, calls Python, does not reimplement the measure). `themis report --idea <slug>` writes `latest.md`, `latest.html`, and `latest.ipynb` under `research/ideas/<slug>/`.
 17. `themis idea --english "I have an idea: ..."` (or equivalent) compiles, registers a slug, runs pandas ask, writes dual reports, and does not invent a metric in chat.

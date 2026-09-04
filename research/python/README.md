@@ -53,6 +53,20 @@ YAML names the Python. The runner loads it. It does not own a retrace.
 
 Same English shape, new numbers → same module, new spec id. New kind → new `strategies/<family>.py` or `needs_human`. Never a new `.py` per chat line.
 
+## Conversation command
+
+`themis idea --english "…"` is the operator loop: compile → register slug → `ask` every plan question → HTML + notebook → screen from folders. Auto-`run` only if the English asked return / pnl / `"how good"` / `"backtest"`.
+
+```bash
+.venv/bin/themis idea --english "how many times has price bounced after a 75% retracement on gold 4h" \
+  --provider binance --symbol XAUUSDT --timeframe 4h --exchange binanceusdm
+.venv/bin/themis idea list
+.venv/bin/themis idea show --name r1-bounce-75
+.venv/bin/themis idea improve --name r1-bounce-75 --english "same bounce, impulse 12 bars"
+```
+
+Grok Build runs that path via `/themis-loop` (`.grok/skills/themis-loop/SKILL.md`). Quote metrics only from run folders.
+
 ## Notebook kernel (workspace only)
 
 Every `ask` writes Markdown + **HTML** + a **notebook**. HTML is the review. The notebook is a live call of `themis.ask` (Themis .venv) so you can redefine the ask on a new spec id. All math stays in Python. Do not quote an edited cell.

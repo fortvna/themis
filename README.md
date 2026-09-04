@@ -112,7 +112,7 @@ After every `ask`, Themis writes Markdown (quoteable), **HTML** (review), and a 
 
 | Stage | Tool |
 | --- | --- |
-| English → YAML | `themis compile` (default backend `mock`). Live `xai`/`openai` after `themis login`. Skill file later. |
+| English → YAML | `themis idea` (conversation) or `themis compile`. Default backend `mock`. Live `xai`/`openai` after `themis login`. Grok Build: `/themis-loop`. |
 | Bars | Binance USD-M via Vision or CSV (optional ccxt) |
 | Behavior | pandas (polars optional) |
 | Trade / optimize | `implements` family + `themis.fill` + `metrics.py` (§18) + declared search space |

@@ -175,29 +175,83 @@ td,th {{ border:1px solid #2c3444; padding:6px 10px; font-size:13px; }}
     return out
 
 
+_IDEA_RATE_KEYS = (
+    "bounce_rate",
+    "complete_rate",
+    "target_rate",
+    "stop_rate",
+    "neither_rate",
+    "react_plus",
+    "react_minus",
+)
+
+
+def _idea_folder_row(folder: Path) -> dict:
+    metrics = json.loads((folder / "metrics.json").read_text()) if (folder / "metrics.json").exists() else {}
+    meta = json.loads((folder / "meta.json").read_text()) if (folder / "meta.json").exists() else {}
+    spec_id = meta.get("spec_id") or metrics.get("spec_id") or folder.name
+    n = metrics.get("n")
+    if n is None:
+        n = metrics.get("n_days") or metrics.get("n_events") or metrics.get("n_trades")
+    rates = []
+    for k in _IDEA_RATE_KEYS:
+        if metrics.get(k) is not None:
+            rates.append((k, metrics.get(k), metrics.get(f"{k}_ci95")))
+    primary = rates[0] if rates else None
+    return {
+        "label": spec_id,
+        "n": n,
+        "rates": rates,
+        "complete_rate": (primary[1] if primary else 0) or 0,
+        "ci": primary[2] if primary else None,
+        "folder": folder.name,
+        "metrics": metrics,
+        "meta": meta,
+        "identity": metrics.get("identity") or meta.get("identity") or "",
+        "symbol": meta.get("symbol") or "",
+        "kind": meta.get("kind") or metrics.get("kind") or "question",
+        "thin": bool(meta.get("thin") or metrics.get("thin")),
+    }
+
+
 def write_idea_html(slug: str, folders: list[Path], *, root: Path | None = None, title: str = "") -> Path:
     root = root or research_root()
-    rows = []
-    for p in folders:
-        m = json.loads((p / "metrics.json").read_text())
-        rows.append({
-            "label": f"ATR{m.get('atr_n')} / {m.get('complete_def')}",
-            "complete_rate": m.get("complete_rate") or 0,
-            "ci": m.get("complete_rate_ci95"),
-            "n": m.get("n") or m.get("n_days"),
-            "n_complete": m.get("n_complete"),
-            "window_start": m.get("window_start"),
-            "window_end": m.get("window_end"),
-            "folder": p.name,
-            "metrics": m,
-        })
-    svg = _bar_svg(rows)
-    table_rows = "".join(
-        f"<tr><td>{_esc(r['label'])}</td><td>{r['n']}</td><td>{r['n_complete']}</td>"
-        f"<td>{float(r['complete_rate']):.1%} ± {float(r['ci'] or 0):.1%}</td>"
-        f"<td><code>{_esc(r['folder'])}</code></td></tr>"
-        for r in rows
-    )
+    rows = [_idea_folder_row(p) for p in folders if Path(p).is_dir()]
+    svg = _bar_svg(rows) if any(r["rates"] for r in rows) else "<p>No rate graphic (folders have no bounce/complete/target rate).</p>"
+    table_rows = []
+    for r in rows:
+        if r["rates"]:
+            rate_s = "; ".join(
+                f"{k}={float(v):.1%}" + (f" ± {float(ci):.1%}" if ci is not None else "")
+                for k, v, ci in r["rates"]
+            )
+        else:
+            rate_s = "—"
+        table_rows.append(
+            f"<tr><td>{_esc(r['label'])}</td><td>{_esc(r['n'])}</td>"
+            f"<td>{_esc(rate_s)}</td><td><code>{_esc(r['folder'])}</code></td></tr>"
+        )
+    first = rows[0] if rows else {}
+    symbol = str(first.get("symbol") or "")
+    ident_obj = first.get("identity") or {}
+    if isinstance(ident_obj, dict):
+        identity = " ".join(
+            str(x)
+            for x in (
+                ident_obj.get("provider"),
+                ident_obj.get("symbol") or symbol,
+                ident_obj.get("timeframe"),
+                ident_obj.get("not"),
+            )
+            if x
+        )
+    else:
+        identity = str(ident_obj or "")
+    thin = any(r.get("thin") for r in rows)
+    if symbol.upper() == "XAUUSDT" and "COMEX" not in identity:
+        identity = (identity + " Binance USD-M XAUUSDT perp, not COMEX.").strip()
+    if symbol.upper() in {"SPYUSDT", "QQQUSDT"}:
+        identity = (identity + f" ETF perp, not {'ES' if symbol.upper()=='SPYUSDT' else 'NQ'}.").strip()
     html = f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"/><title>Themis idea {_esc(slug)}</title>
 <style>
@@ -208,22 +262,22 @@ td,th {{ border:1px solid #2c3444; padding:6px 10px; font-size:13px; }}
 pre {{ background:#161b22; padding:12px; overflow:auto; font-size:12px; }}
 </style></head><body>
 <h1>{_esc(title or slug)}</h1>
-<div class="banner"><span>thin: true</span><span>execution_ready: false</span><span>kept: false</span><span>ask / path stats</span><span>not pnl</span></div>
-<p>Binance USD-M <strong>XAUUSDT</strong> perp, not COMEX. Outcome window is the last calendar month of bars actually loaded. August 2026 Vision zip was HTTP 404 from this desk.</p>
-<h2>Rival complete rates</h2>
+<div class="banner"><span>thin: {str(thin).lower()}</span><span>execution_ready: false</span><span>kept: false</span><span>ask / path stats</span><span>not pnl</span></div>
+<p>{_esc(identity)}</p>
+<h2>Rival rates from run folders</h2>
 {svg}
-<table><thead><tr><th>definition</th><th>n days</th><th>n complete</th><th>rate (Wald 95% CI half-width)</th><th>folder</th></tr></thead>
-<tbody>{table_rows}</tbody></table>
-<p>Quote only these folders. A rate is not return. No strategy was run.</p>
+<table><thead><tr><th>spec</th><th>n</th><th>rates (folder)</th><th>folder</th></tr></thead>
+<tbody>{"".join(table_rows)}</tbody></table>
+<p>Quote only these folders. A rate is not return. Screen is not kept.</p>
 </body></html>
 """
     dest = root / "research" / "ideas" / slug
     dest.mkdir(parents=True, exist_ok=True)
     out = dest / "latest.html"
-    out.write_text(html, encoding="utf-8")
+    out.write_text(_never_emini(html, symbol), encoding="utf-8")
     reports = root / "research" / "reports"
     reports.mkdir(parents=True, exist_ok=True)
-    (reports / f"{slug}.html").write_text(html, encoding="utf-8")
+    (reports / f"{slug}.html").write_text(_never_emini(html, symbol), encoding="utf-8")
     return out
 
 
@@ -322,9 +376,26 @@ def write_idea_bundle(slug: str, *, root: Path | None = None, english: str = "")
     if folders:
         write_idea_html(slug, folders, root=root, title=title)
         write_idea_notebook(slug, folders, root=root, english=eng)
-    md = dest / "latest.md"
-    if not md.exists():
-        md.write_text(f"# {slug}\n\nSee latest.html and latest.ipynb. Quote run folders.\n", encoding="utf-8")
+    last = versions[-1] if versions else {}
+    md_lines = [
+        f"# Idea `{slug}`",
+        "",
+        f"- title: {title}",
+        f"- screen: {last.get('screen')}",
+        f"- version: {(idea.get('current') or {}).get('version') or last.get('version')}",
+        f"- english: {eng or last.get('english') or idea.get('english_origin') or ''}",
+        "",
+        "Numbers live in run folders. Chat did not invent them.",
+        "",
+        "## runs",
+        "",
+    ]
+    for r in runs:
+        md_lines.append(f"- `{r}`")
+    if not runs:
+        md_lines.append("- (none yet)")
+    md_lines.extend(["", "See latest.html and latest.ipynb.", ""])
+    (dest / "latest.md").write_text("\n".join(md_lines), encoding="utf-8")
     return dest / "latest.html"
 
 
@@ -351,28 +422,26 @@ def _code(text: str) -> dict:
 
 
 def write_idea_notebook(slug: str, folders: list[Path], *, root: Path | None = None, english: str = "") -> Path:
-    """Representation of Python ask logic. Cells call themis.*; they do not compute ATR."""
+    """Representation of Python ask logic. Cells call themis.ask.measure; they do not reimplement it."""
     import json as _json
 
     root = root or research_root()
-    run_spec = ""
-    if folders:
-        sp = (Path(folders[0]) / "spec.yaml").resolve()
+    rels: list[str] = []
+    for f in folders:
+        p = Path(f)
         try:
-            run_spec = str(sp.relative_to(root.resolve()))
+            rels.append(str(p.resolve().relative_to(root.resolve())))
         except ValueError:
-            run_spec = str(sp)
+            rels.append(str(p))
     cells = [
         _md(
             f"""# Idea `{slug}`
 
-This notebook is a **live representation** of Python in `themis.ask`. Run All on the Themis (.venv) kernel. It does not reimplement ATR.
+This notebook **represents** `themis.ask.measure` on the frozen specs for this idea. Kernel: Themis (.venv).
 
 English: *{english}*
 
-**Ask, not a trade.** Logic: `atr_path_days`, `atr_complete_table`, `atr_complete_rivals`. Families (`strategies/*`, fill, metrics) stay shared and unused here.
-
-Unnamed keys (frozen in `ATR_COMPLETE_RIVALS`): ATR 14 vs 20; complete = daily range vs from-open. Window: last calendar month of loaded bars."""
+To **redefine the ask**: `themis idea improve --name {slug}` (new spec ids, same slug). Do not edit a rate in a cell and quote it. The run folder wins."""
         ),
         _code(
             f"""from pathlib import Path
@@ -385,63 +454,22 @@ while repo != repo.parent and not (repo / "docs" / "open-spec.md").exists():
 os.environ["THEMIS_ROOT"] = str(repo)
 os.chdir(repo)
 
-from themis.data import load_from_spec
 from themis.spec import load_spec
-from themis.ask import (
-    atr_path_days,
-    atr_complete_rivals,
-    plot_range_vs_prior_atr,
-)
+from themis.data import load_from_spec
+from themis.ask import measure
 
-SPEC = repo / {run_spec!r}
-spec = load_spec(SPEC)
-spec["id"], spec.get("measure"), spec.get("instrument")"""
+RUNS = {rels!r}
+rows = []
+for rel in RUNS:
+    run = repo / rel
+    spec = load_spec(run / "spec.yaml")
+    series = load_from_spec(spec, root=repo, network=False)
+    metrics, table = measure(spec, series)
+    rows.append((spec.get("id"), series.identity, metrics, table))
+[(r[0], r[1], {{k: r[2].get(k) for k in ("n", "n_days", "bounce_rate", "target_rate", "stop_rate", "complete_rate") if k in r[2]}}) for r in rows]"""
         ),
         _md(
-            """## 1. Series
-
-`themis.data` loads the frozen spec. Binance `XAUUSDT` perp, not COMEX."""
-        ),
-        _code(
-            """series = load_from_spec(spec, root=repo, network=False)
-ohlc = series.df
-series.identity"""
-        ),
-        _md(
-            """## 2. Path frame (Python)
-
-`atr_path_days` builds UTC daily OHLC, range, from-open, ATR, **prior_atr = atr.shift(1)**."""
-        ),
-        _code(
-            """path = atr_path_days(ohlc, atr_n=14)
-path[["open", "high", "low", "close", "day_range", "from_open", "atr", "prior_atr"]].tail(8)"""
-        ),
-        _md(
-            """## 3. Rivals (Python catalog)
-
-`atr_complete_rivals` applies `ATR_COMPLETE_RIVALS` and the last-calendar-month window."""
-        ),
-        _code(
-            """summary, tables = atr_complete_rivals(ohlc)
-summary"""
-        ),
-        _md(
-            """## 4. One rival, day by day"""
-        ),
-        _code(
-            """july = tables[(14, "day_range")]
-july[["open", "high", "low", "close", "prior_atr", "day_range", "from_open", "complete", "range_over_atr"]]"""
-        ),
-        _code(
-            """plot_range_vs_prior_atr(
-    july,
-    title="XAUUSDT daily range vs prior-day ATR(14) — last calendar month",
-)"""
-        ),
-        _md(
-            """Chat quotes **run folders**. This notebook calls the same functions. If they disagree, the folder wins.
-
-Do not multiply `complete_rate` by R. Screen is weak on n≈30."""
+            """Chat quotes `research/runs/<id>/metrics.json`. If a cell disagrees with the folder, the folder wins until you freeze a new spec."""
         ),
     ]
     nb = {

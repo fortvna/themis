@@ -47,7 +47,7 @@ First concrete path if unspecified:
 
 Colab is an allowed desk: same YAML, same cache/CSV, same run folders. Chat is not the record.
 
-Do **not** create a skill package in this pass.
+`docs/open-spec.md` supersedes this file. The conversation command is `themis idea`. Project skill: `.grok/skills/themis-loop/` (`/themis-loop`).
 
 ## What `questions.md` is
 
@@ -96,7 +96,7 @@ No downloader farm. No DuckDB. No backfill-everything. No silent fourth venue.
 - Treating YAML as a program that runs itself
 - Answering return / “best” from an `ask` table
 - Multiplying a bounce rate by R in chat
-- Building a skill directory
+- Building extra skill directories beyond `.grok/skills/themis-loop/`
 - Starting with indicator/alert before a kept spec
 
 Allowed stack: `ccxt` (Binance, Bybit, Bitget only in v1), `pandas`, `numpy`, `pyyaml`, `backtesting.py`. Optional: `polars`. Do not add yfinance in this pass.
@@ -303,7 +303,7 @@ From artifacts only: spec id, family, hypothesis, exact series, actual dates loa
 
 ## Desk
 
-Themis is files. Any terminal agent may compile English → YAML → Python. Do not add a new LLM login. No skill directory this pass.
+Themis is files. Any terminal agent may compile English → YAML → Python. Do not add a new LLM login. Grok Build runs the loop via `.grok/skills/themis-loop/`.
 
 ## Acceptance checks
 
@@ -317,7 +317,7 @@ Themis is files. Any terminal agent may compile English → YAML → Python. Do 
 8. No rate, return, or pnl printed except from `metrics.json` / `table.csv`.
 9. Question folder has no `trades.csv` and no pnl keys.
 10. `compare` on two fixture cousins lists both.
-11. No skill directory.
+11. Project skill `.grok/skills/themis-loop/SKILL.md` exists.
 
 ## Order of work
 

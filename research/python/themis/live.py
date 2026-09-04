@@ -272,9 +272,9 @@ def _compile_live(
         s.setdefault("forbidden", ["forming_bar_signals", "same_bar_fill", "future_pivots"])
         s.setdefault("kill", {"min_trades": 30, "max_drawdown_pct": 40, "min_net_return": 0})
         s.setdefault("search_space", {})
-        s.setdefault("run_eligible": False)
-        s.setdefault("walkforward_eligible": False)
-        s.setdefault("tune_eligible": False)
+        s.setdefault("run_eligible", False)
+        s.setdefault("walkforward_eligible", False)
+        s.setdefault("tune_eligible", False)
     for q in qs:
         _lift_engine_fields(q)
     for s in ss:
