@@ -9,6 +9,7 @@ from typing import Any
 from themis import auth
 from themis.ask import AskError, run_ask
 from themis.compiler import CompileError, compile_bank, compile_english
+from themis.ideas import IdeaError, list_ideas, run_idea_loop, show_idea
 from themis.runner import RunError, compare, fetch, report, run_strategy, tune, validate, walkforward
 
 
@@ -106,6 +107,34 @@ def main(argv: list[str] | None = None) -> int:
     rep.add_argument("--run", default=None)
     rep.add_argument("--idea", default=None)
 
+    idea_p = sub.add_parser("idea")
+    idea_sub = idea_p.add_subparsers(dest="idea_cmd")
+    # themis idea --english "..."  (no subcommand)
+    idea_p.add_argument("--english", default=None)
+    idea_p.add_argument("--name", default=None)
+    idea_p.add_argument("--provider", default="binance")
+    idea_p.add_argument("--symbol", default="BTCUSDT")
+    idea_p.add_argument("--timeframe", default="4h")
+    idea_p.add_argument("--exchange", default="binanceusdm")
+    idea_p.add_argument("--backend", default="mock", choices=["mock", "xai", "openai"])
+    idea_p.add_argument("--offline", action="store_true")
+    idea_p.add_argument("--csv", default=None)
+    idea_p.add_argument("--thin", action="store_true")
+    idea_sub.add_parser("list", help="list idea slugs")
+    show_p = idea_sub.add_parser("show", help="show idea.yaml")
+    show_p.add_argument("--name", required=True)
+    imp_p = idea_sub.add_parser("improve", help="new version on same slug")
+    imp_p.add_argument("--name", required=True)
+    imp_p.add_argument("--english", required=True)
+    imp_p.add_argument("--provider", default="binance")
+    imp_p.add_argument("--symbol", default="BTCUSDT")
+    imp_p.add_argument("--timeframe", default="4h")
+    imp_p.add_argument("--exchange", default="binanceusdm")
+    imp_p.add_argument("--backend", default="mock", choices=["mock", "xai", "openai"])
+    imp_p.add_argument("--offline", action="store_true")
+    imp_p.add_argument("--csv", default=None)
+    imp_p.add_argument("--thin", action="store_true")
+
     args = p.parse_args(argv)
     try:
         if args.cmd == "login":
@@ -189,7 +218,51 @@ def main(argv: list[str] | None = None) -> int:
             path = report(args.run)
             print(str(path))
             return 0
+        if args.cmd == "idea":
+            idea_cmd = getattr(args, "idea_cmd", None)
+            if idea_cmd == "list":
+                _print(list_ideas())
+                return 0
+            if idea_cmd == "show":
+                _print(show_idea(args.name))
+                return 0
+            if idea_cmd == "improve":
+                series = {
+                    "provider": args.provider,
+                    "symbol": args.symbol,
+                    "timeframe": args.timeframe,
+                    "exchange": getattr(args, "exchange", None) or "binanceusdm",
+                }
+                out = run_idea_loop(
+                    args.english,
+                    series,
+                    name=args.name,
+                    backend=args.backend,
+                    offline=args.offline,
+                    csv_path=args.csv,
+                    thin=args.thin,
+                    improve=True,
+                )
+                _print(out)
+                return 0
+            # themis idea --english "..."
+            if not args.english:
+                print("idea needs --english, or subcommand list|show|improve", file=sys.stderr)
+                return 2
+            series = _series(args)
+            out = run_idea_loop(
+                args.english,
+                series,
+                name=args.name,
+                backend=args.backend,
+                offline=args.offline,
+                csv_path=args.csv,
+                thin=args.thin,
+                improve=False,
+            )
+            _print(out)
+            return 0
         return 2
-    except (CompileError, AskError, RunError, auth.AuthError) as e:
+    except (CompileError, AskError, RunError, IdeaError, auth.AuthError) as e:
         print(str(e), file=sys.stderr)
         return 1
