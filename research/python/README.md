@@ -55,7 +55,7 @@ Same English shape, new numbers → same module, new spec id. New kind → new `
 
 ## Notebook kernel (workspace only)
 
-An idea notebook is a **representation** of Python: `import themis`, call, display. All hypothesis math lives in `themis.ask` (or a family `implements`). The notebook does not reimplement ATR, fill, or metrics.
+Every `ask` writes Markdown + **HTML** + a **notebook**. HTML is the review. The notebook is a live call of `themis.ask` (Themis .venv) so you can redefine the ask on a new spec id. All math stays in Python. Do not quote an edited cell.
 
 Notebooks use the **Themis (.venv)** kernel, registered *inside* `research/python/.venv` (`ipykernel install --sys-prefix`). Never `--user`. Never Apple’s Python.
 

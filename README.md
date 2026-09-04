@@ -39,7 +39,7 @@ v1 venue is **Binance USD-M** (`binanceusdm`). Series: `XAUUSDT` (gold perp, not
 | Talk | English. Examples in [`questions.md`](questions.md). |
 | YAML | Structure only: what to measure, or what the trade is. |
 | Data | **v1: Binance USD-M.** csv, Vision (first-class), optional ccxt. You name the series. Gold 4h → this venue’s `XAUUSDT` perp. |
-| `ask` | pandas on the YAML. Counts, bounce rates, percentiles. No pnl. |
+| `ask` | pandas on the YAML. Counts, bounce rates, percentiles. No pnl. Then **HTML + notebook** so you can review and redefine the ask. |
 | `run` | Load `implements` (family template). Shared fill + `metrics.py`. YAML is not executed. |
 | `compare` / `tune` | Several cousins. Optimize = new spec ids, same family. |
 | Indicator / alert | After a spec is **kept**. Visual or alert twin of that spec. Not a shortcut around the backtest. |
@@ -93,7 +93,7 @@ Do not build a warehouse. Do not backfill every venue in advance. Do not merge t
 4. A lookalike is still that venue’s product. Binance `XAUUSDT` ≠ another venue’s `XAUUSDT` ≠ `XAUT` ≠ `PAXG` ≠ COMEX. Do not relabel. SPY/QQQ reports say ETF perp, never ES/NQ.
 5. Forex spot and cash/futures indices are **not** this book (except a venue’s own named perp, which must stay labeled). Do not fetch Yahoo/`EURUSD=X` / `NQ=F`.
 
-Colab is a fine desk. A notebook, if you generate one, is a **replay of a run folder**. It is not the hypothesis and not where ratios are computed. The run folder is the record.
+After every `ask`, Themis writes Markdown (quoteable), **HTML** (review), and a **notebook** (live call of `themis.ask`, Themis .venv kernel). Use HTML + notebook to redefine definitions — new spec id, same idea slug. Do not edit a number in a cell and quote it. The run folder is still the record. Families / fill / metrics stay shared Python.
 
 ## Hard rules
 
@@ -130,7 +130,7 @@ research/
   questions/      question YAML (structure for ask)
   specs/          strategy YAML (structure for the Python port)
   python/         themis + .venv (never global pip); strategies/ = family templates
-  notebooks/      optional replay of a run folder; not the record
+  notebooks/      idea + report notebooks (representation of Python; redefine the ask from here)
   runs/           one folder per attempt
   reports/        Markdown from runs
 docs/             open-spec.md and research notes

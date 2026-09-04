@@ -560,4 +560,6 @@ def run_ask(spec_path: str | Path, *, root: Path | None = None, network: bool = 
     (folder / "status.json").write_text(json.dumps({"ok": True, "kind": "question"}, indent=2) + "\n")
     if (folder / "trades.csv").exists():
         (folder / "trades.csv").unlink()
+    from themis.report import write_report
+    write_report(folder, root=root)
     return folder

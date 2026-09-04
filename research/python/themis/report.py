@@ -69,11 +69,19 @@ def render(run_dir: str | Path, root: Path | None = None) -> Path:
 
 
 def write_report(run_dir, *, root=None):
+    root = root or research_root()
     md = render(run_dir, root=root)
-    try:
-        write_html(run_dir, root=root or research_root())
-    except Exception:
-        pass
+    write_html(run_dir, root=root)
+    run = Path(md).with_suffix("")  # not the run dir
+    # resolve run folder again for kind
+    p = Path(run_dir)
+    if not p.exists():
+        p = root / "research" / "runs" / Path(run_dir).name
+    meta = {}
+    if (p / "meta.json").exists():
+        meta = json.loads((p / "meta.json").read_text())
+    if meta.get("kind") == "question":
+        write_ask_notebook(p, root=root)
     return md
 
 
@@ -217,6 +225,107 @@ pre {{ background:#161b22; padding:12px; overflow:auto; font-size:12px; }}
     reports.mkdir(parents=True, exist_ok=True)
     (reports / f"{slug}.html").write_text(html, encoding="utf-8")
     return out
+
+
+def write_ask_notebook(run_dir: str | Path, *, root: Path | None = None) -> Path:
+    """Per-ask notebook: call measure() on the frozen spec. Redefine via new YAML, not cells."""
+    import json as _json
+
+    root = root or research_root()
+    run = Path(run_dir)
+    if not run.exists():
+        run = root / "research" / "runs" / Path(run_dir).name
+    rel = str(run.resolve().relative_to(root.resolve())) if run.exists() else str(run)
+    cells = [
+        _md(
+            """# Ask review
+
+This notebook **represents** `themis.ask.measure` on the frozen spec in this run folder. Kernel: Themis (.venv).
+
+To **redefine the ask**: change `definitions` / `condition` on a **new** spec id (same idea slug), then `themis ask` again. Do not edit a rate in a cell and quote it."""
+        ),
+        _code(
+            f"""from pathlib import Path
+import os
+
+here = Path.cwd()
+repo = here
+while repo != repo.parent and not (repo / "docs" / "open-spec.md").exists():
+    repo = repo.parent
+os.environ["THEMIS_ROOT"] = str(repo)
+os.chdir(repo)
+
+from themis.spec import load_spec
+from themis.data import load_from_spec
+from themis.ask import measure
+
+RUN = repo / {rel!r}
+spec = load_spec(RUN / "spec.yaml")
+spec.get("id"), spec.get("measure") or spec.get("condition"), spec.get("definitions")"""
+        ),
+        _code(
+            """series = load_from_spec(spec, root=repo, network=False)
+metrics, table = measure(spec, series)
+metrics"""
+        ),
+        _code(
+            """table.head(20) if table is not None and len(table) else table"""
+        ),
+        _md(
+            """Chat quotes `RUN/metrics.json`. If this cell disagrees with the folder, the folder wins until you freeze a new spec."""
+        ),
+    ]
+    nb = {
+        "nbformat": 4,
+        "nbformat_minor": 5,
+        "metadata": {
+            "kernelspec": {
+                "display_name": "Themis (.venv)",
+                "language": "python",
+                "name": "themis",
+            },
+            "language_info": {"name": "python", "pygments_lexer": "ipython3"},
+        },
+        "cells": cells,
+    }
+    out_dir = root / "research" / "reports"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out = out_dir / f"{run.name}.ipynb"
+    out.write_text(_json.dumps(nb, indent=1) + "\n", encoding="utf-8")
+    return out
+
+
+def write_idea_bundle(slug: str, *, root: Path | None = None, english: str = "") -> Path:
+    """latest.md + html + ipynb from idea.yaml runs."""
+    import yaml
+
+    root = root or research_root()
+    idea_p = root / "research" / "ideas" / slug / "idea.yaml"
+    if not idea_p.exists():
+        raise FileNotFoundError(idea_p)
+    idea = yaml.safe_load(idea_p.read_text()) or {}
+    runs = []
+    versions = idea.get("versions") or []
+    if versions:
+        runs = list(versions[-1].get("runs") or [])
+    folders = []
+    for r in runs:
+        p = Path(r)
+        if not p.is_absolute():
+            p = root / r
+        if p.is_dir():
+            folders.append(p)
+    title = idea.get("title") or slug
+    eng = english or idea.get("english_origin") or ""
+    dest = root / "research" / "ideas" / slug
+    dest.mkdir(parents=True, exist_ok=True)
+    if folders:
+        write_idea_html(slug, folders, root=root, title=title)
+        write_idea_notebook(slug, folders, root=root, english=eng)
+    md = dest / "latest.md"
+    if not md.exists():
+        md.write_text(f"# {slug}\n\nSee latest.html and latest.ipynb. Quote run folders.\n", encoding="utf-8")
+    return dest / "latest.html"
 
 
 def _md(text: str) -> dict:

@@ -7,7 +7,9 @@ Vulcan forges from this document. Fixtures, event tables, and Vision CSVs stay o
 
 Canon pointer: root `SPEC.md`. This file is the implementation spec.
 
-Revision 2026-08-28d (family templates): `run` loads `implements` and calls `trades(spec, df, ...)`. Same shape, new numbers → same module, numbers in YAML. New kind → new `strategies/<family>.py` or `needs_human`. No silent 0.618 in the runner. Notebooks are optional views of a run folder, not the hypothesis.
+Revision 2026-08-28e (ask review): every `ask` ships a notebook **and** HTML with the run folder. Logic stays in Python (`themis.ask`). The notebook is a live representation so the operator can review definitions and **redefine the ask** (new spec id, same idea slug). HTML is the desk view. Markdown + `metrics.json` remain quoteable. Chat still does not invent numbers.
+
+Revision 2026-08-28d (family templates): `run` loads `implements` and calls `trades(spec, df, ...)`. Same shape, new numbers → same module, numbers in YAML. New kind → new `strategies/<family>.py` or `needs_human`. No silent 0.618 in the runner.
 
 Revision 2026-08-28c (run engine): pandas bar-loop is v1 `run` (not kernc `backtesting.py`). `metrics.py` computes §18 from bar-indexed equity. Same-bar stop+target is tagged `ambiguous_same_bar` and filled at the stop. Gap through a level fills at open. Slippage ticks are applied when written.
 
@@ -75,7 +77,7 @@ Same ticker on another venue is a different series. Do not merge. Do not relabel
 14. No warehouse. No live orders. No fourth venue in v1. No paid SDK call. No spend. No tokens in git. Live compile only after `themis login` and Amir says to leave mock.
 15. English compiler does not pick a venue or a series.
 16. Ideas have a slug. Improving an idea is a new spec id on the same slug. Never overwrite a parent YAML or a parent run folder.
-17. `report` writes Markdown **and** HTML from the same run folder. HTML may graph only data that folder already contains. Chat still quotes `metrics.json` / `table.csv`, not the picture.
+17. `report` writes Markdown, HTML, and (for asks) a notebook from the same run folder. HTML and the notebook may graph/call only data and Python that folder/spec already name. Chat still quotes `metrics.json` / `table.csv`, not the picture and not an edited cell.
 18. Ratios are computed by the engine from equity and trades. Missing → `not_computed` plus a reason. Chat does not invent a Sharpe, and does not promote on one ratio.
 19. "Worth it" is a **screen**, not `kept`. Ask screens path stats. Run screens after-cost kill + the metric set in §18. Neither is paper or live.
 20. Live Themis compiles with the prompt in §20. Do not freelance a friendlier prompt that rewrites a named stop or speaks a metric.
@@ -259,6 +261,8 @@ Optional: `idea` (slug). Set when this YAML was frozen from a named idea so runs
 
 `ask` writes `runs/<utc>-<spec-id>-<short-hash>/` with `spec.yaml`, `meta.json` (`kind: question`, `stage: discovery|validation`, `execution_ready: false`), `metrics.json`, `table.csv`, `engine.log`, `status.json`. No `trades.csv`. No pnl keys. Print CI on rates when `n` allows.
 
+Then `report` (also run at the end of `ask`) writes **Markdown + HTML + notebook** for that folder. HTML is the review surface (rival rates). The notebook is the live walk of `themis.ask.measure` / family helpers so the operator can see definitions and redefine the ask. Numbers quoted in chat still come from the folder, not from a cell the operator edited.
+
 ### Strategy YAML
 
 Required: `id`, `kind: strategy`, `family`, `implements`, `requires_asks`, `instrument`, `data`, `discovery`, `holdout`, `costs`, `rules` (fill, entry, stop, target), `forbidden`, `kill`, `search_space`, `run_eligible`, `walkforward_eligible`, `tune_eligible`.
@@ -279,7 +283,7 @@ Optional: `idea` (slug), `named` (pinned English fields). `family` stays the cou
 
 Contract: `trades(spec, df, *, commission=0.0, slip=0.0) -> DataFrame`. Optional `REQUIRED_SPEC_KEYS`. Loader: `themis.implements.load_implements`. v1 family: `strategies/retrace_swing.py`. `sma_cross.py` is a stub and must not run as retrace.
 
-A later GUI (Harness) chats like a normal LLM with projects / sessions / ideas. That UI drives `compile` / `idea` / `ask` / `run` / `report`. It is not a second engine. Mapping: project = desk, session = thread, hypothesis = idea slug, freeze = spec id, measurement = run folder. Notebooks, if generated, replay a folder. They are not the hypothesis and not where ratios are computed.
+A later GUI (Harness) chats like a normal LLM with projects / sessions / ideas. That UI drives `compile` / `idea` / `ask` / `run` / `report`. It is not a second engine. Mapping: project = desk, session = thread, hypothesis = idea slug, freeze = spec id, measurement = run folder. After `ask`, the operator reviews **HTML + notebook**, then may redefine the ask (new spec id, same slug). The notebook calls Python; it does not reimplement ATR, fill, or metrics.
 
 `run` loads discovery bars only, stated costs, next-open fill via `themis.fill` (not kernc `backtesting.py`). Writes `trades.csv`, `equity.csv` on the **bar** index, and the metric set in §18. Missing ratios go in **not_computed** as a map of name → reason. Always list **not modeled**: perp funding, intra-bar stop/target path. `execution_ready: false` until Amir writes real costs. Do not leave Sharpe / Sortino / Calmar in a permanent `not_computed` list if equity has two or more points — compute them.
 
@@ -559,7 +563,7 @@ Indicator/alert as a first step, skill package, warehouse, live/broker, yfinance
 13. SPY/QQQ reports never say ES/NQ.
 14. No skill directory. No fixtures in git.
 15. Strategy `run` writes Sharpe, Sortino, Calmar, CAGR, profit factor, expectancy from equity/trades, or lists each missing name with a reason. Ask folders still have no pnl keys.
-16. `themis report --run` writes `research/reports/<run>.md` and `research/reports/<run>.html`. HTML contains at least one graphic built from that folder (ask: rival rates; strategy: equity curve). No CDN.
+16. `themis report --run` writes `research/reports/<run>.md` and `research/reports/<run>.html`. HTML contains at least one graphic built from that folder (ask: rival rates; strategy: equity curve). No CDN. Ask folders also write `research/reports/<run>.ipynb` (Themis .venv kernel, calls Python, does not reimplement the measure). `themis report --idea <slug>` writes `latest.md`, `latest.html`, and `latest.ipynb` under `research/ideas/<slug>/`.
 17. `themis idea --english "I have an idea: ..."` (or equivalent) compiles, registers a slug, runs pandas ask, writes dual reports, and does not invent a metric in chat.
 18. `themis idea improve --name <slug> --english "..."` writes new spec ids on that slug and refuses to overwrite parent YAML.
 19. `themis idea list` / `show` recall slugs, spec ids, run folders, and the last screen from files.
@@ -570,7 +574,7 @@ Indicator/alert as a first step, skill package, warehouse, live/broker, yfinance
 
 Caesar routes. Minerva owns this spec until a later revision. Prometheus owns compiler trials. Vulcan forges after this file exists. Amir: no external messages, no money, no account changes, no deletes without him. No spend on the SDK.
 
-This revision (2026-08-28d) is family templates: `implements` is the strategy; runner is load + fill + metrics. 2026-08-28c remains the fill/metrics canon. ADR `live-compile-named-stop.md` stays baked into §3. Ideas, dual reports, and the compiler prompt remain §§17–20 (2026-08-28b).
+This revision (2026-08-28e) makes HTML + notebook part of the **ask** product so the operator can review and redefine definitions. 2026-08-28d remains family templates. ADR `live-compile-named-stop.md` stays baked into §3.
 
 ## 17. Ideas (name, recall, improve)
 
@@ -624,7 +628,7 @@ Also write `research/ideas/<slug>/latest.html` as a rollup of the current versio
 | `themis idea list` | print slugs, titles, current screen, last version | rank "best idea" |
 | `themis idea show --name <slug>` | print idea.yaml + linked spec ids + run folders | retell numbers except by quoting those folders |
 | `themis idea improve --name <slug> --english "..."` | new version, new spec ids, same slug, parent = current spec ids, then same ask (and run-if-trade) path | overwrite parent YAML or parent runs |
-| `themis report --idea <slug>` | dual rollup from the idea's current runs | mix two slugs |
+| `themis report --idea <slug>` | md + html + notebook rollup from the idea's current runs | mix two slugs |
 
 English that is already a §9 bank row still gets a slug (the stable bank slug). Unknown English with named trade fields (stop/target/retrace) is an idea, not `needs_human`. Unknown English with **no** named trade fields and no bank match stays `needs_human`.
 
@@ -747,12 +751,15 @@ Kill stays the only hard gate for `candidate`: `min_trades: 30`, `max_drawdown_p
 - intra-bar stop/target path (OHLC cannot order high vs low). Same-bar both-hit is tagged `ambiguous_same_bar` and filled at the **stop**. Gap through a level fills at **open**.
 - real fees until Amir writes them (`execution_ready: false`)
 
-## 19. Dual report (Markdown + HTML)
+## 19. Ask review (Markdown + HTML + notebook)
 
-`themis report --run runs/<id>` writes both:
+`themis report --run runs/<id>` writes:
 
 - `research/reports/<run>.md` — quoteable artifact. Spec id, family, idea slug if any, hypothesis, exact series, actual dates, `n_bars`, `thin`, `short_window`, metrics that exist, kill status, screen, family rank, link to folder, **not_computed** with reasons, **not_modeled**. No "take this live." SPY/QQQ never say ES/NQ.
-- `research/reports/<run>.html` — same facts, **plus graphics**. Self-contained. Inline CSS + inline SVG from matplotlib Agg. No chart CDN. No network to view. File must still make sense if images fail: tables of the JSON remain.
+- `research/reports/<run>.html` — same facts, **plus graphics**. Self-contained. Inline CSS + inline SVG. No chart CDN. No network to view. File must still make sense if images fail: tables of the JSON remain.
+- `research/reports/<run>.ipynb` (ask/question folders) — live representation of Python. Kernel: Themis (.venv). Cells `import themis` and call `measure` / `atr_complete_rivals` / the family module. No second ATR. Used to **review and redefine the ask** (change `definitions` / `condition` on a **new** spec id, same idea slug). Not where chat quotes numbers.
+
+Redefine loop: English → freeze YAML → `ask` → HTML + notebook → operator changes an unnamed key → new spec id → `ask` again. Do not edit a metric in a cell and treat it as a run.
 
 HTML **must** graph folder data. Minimum:
 
@@ -765,9 +772,9 @@ HTML **must** graph folder data. Minimum:
 
 Banners on every HTML: `thin`, `short_window`, `execution_ready: false`, `kept: false` unless true, `notional: 1_unit`. Idea slug and version in the header when known.
 
-`themis report --idea <slug>` writes `research/ideas/<slug>/latest.md` and `latest.html`: all current-version ask+run reports stacked, one rival-rate chart, one equity if a strategy run exists.
+`themis report --idea <slug>` writes `research/ideas/<slug>/latest.md`, `latest.html`, and `latest.ipynb`: current-version asks stacked, rival-rate chart, notebook walk of the Python. Improve the idea from that review; never overwrite a parent YAML.
 
-Markdown remains the record you can grep. HTML is the desk view. Chat still cites JSON/CSV.
+Markdown remains the record you can grep. HTML is the desk view. The notebook is how you inspect and redefine the ask. Chat still cites JSON/CSV.
 
 ## 20. Compiler prompt (Themis)
 

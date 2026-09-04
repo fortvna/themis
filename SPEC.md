@@ -4,7 +4,9 @@ Minerva canon. Not a second spec.
 
 The implementation spec is [`docs/open-spec.md`](docs/open-spec.md). Vulcan forges from that file. This pointer exists so the repo has an opened SPEC.md; do not fork requirements here.
 
-Opened 2026-08-28. Revision **2026-08-28d** (family templates): `run` loads `implements`; same shape / new numbers stay on YAML; new kind needs a new family module. See open-spec §6.
+Opened 2026-08-28. Revision **2026-08-28e** (ask review): `ask` / `report` write Markdown + HTML + a Python notebook. The notebook represents `themis.ask`; use it to redefine the ask (new spec id). See open-spec §19.
+
+Revision **2026-08-28d** (family templates): `run` loads `implements`; same shape / new numbers stay on YAML; new kind needs a new family module. See open-spec §6.
 
 Revision **2026-08-28c** (run engine): pandas fill + `metrics.py` from bar equity; same-bar SL/TP fills the stop; gap fills at open. See open-spec header.
 

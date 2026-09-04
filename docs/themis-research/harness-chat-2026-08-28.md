@@ -27,6 +27,4 @@ Login already exists for compile. Chat still may not invent a 70% or a Sharpe.
 
 Same shape, new numbers → same `implements`, numbers on the YAML.
 New kind (ORB, FVG, Po3) → new `strategies/<family>.py` or `needs_human`.
-Not a new `.py` per message. Not a notebook as the hypothesis.
-
-A notebook, if the GUI shows one, is a **replay of a run folder** (swings, zone, fill, equity). Ratios still come from `metrics.json`.
+Not a new `.py` per message. The notebook is part of the product **with** the HTML: review the ask, then redefine (new spec id). Logic stays in Python; cells only call it. Ratios still come from `metrics.json`.

@@ -103,7 +103,8 @@ def main(argv: list[str] | None = None) -> int:
     tun.add_argument("--csv", default=None)
 
     rep = sub.add_parser("report")
-    rep.add_argument("--run", required=True)
+    rep.add_argument("--run", default=None)
+    rep.add_argument("--idea", default=None)
 
     args = p.parse_args(argv)
     try:
@@ -177,6 +178,14 @@ def main(argv: list[str] | None = None) -> int:
             print(str(folder))
             return 0
         if args.cmd == "report":
+            if args.idea:
+                from themis.report import write_idea_bundle
+                path = write_idea_bundle(args.idea)
+                print(str(path))
+                return 0
+            if not args.run:
+                print("report needs --run or --idea", file=sys.stderr)
+                return 2
             path = report(args.run)
             print(str(path))
             return 0
