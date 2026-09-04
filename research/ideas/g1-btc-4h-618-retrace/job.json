@@ -1,0 +1,68 @@
+{
+  "schema": "themis.job.v1",
+  "status": "ok",
+  "case_id": "G1",
+  "path": "run",
+  "note": "two swing fractals then strategy not eligible",
+  "source": {
+    "english": "4h swing high/low, enter retrace 61.8-72.5, stop swing low, target swing high",
+    "media": [],
+    "compiler": "mock",
+    "model": "mock"
+  },
+  "instrument": {
+    "provider": "binance",
+    "symbol": "BTCUSDT",
+    "timeframe": "4h",
+    "exchange": "binanceusdm"
+  },
+  "plan": [
+    {
+      "kind": "question",
+      "id": "g1-n5-btc-4h-v1",
+      "purpose": "rival_definition"
+    },
+    {
+      "kind": "question",
+      "id": "g1-n3-btc-4h-v1",
+      "purpose": "rival_definition"
+    },
+    {
+      "kind": "strategy",
+      "id": "g1-n5-1r-btc-4h-v1",
+      "requires": [
+        "g1-n5-btc-4h-v1",
+        "g1-n3-btc-4h-v1"
+      ],
+      "run_eligible": true,
+      "walkforward_eligible": true,
+      "tune_eligible": false
+    }
+  ],
+  "gates": {
+    "freeze_yaml_before_metrics": true,
+    "rivals_min": 2,
+    "ask_before_run": true,
+    "tune_requires": "walkforward_eligible",
+    "named_fields_pinned": true
+  },
+  "single_winner": false,
+  "refuse_tune_on_thin": false,
+  "named": {
+    "timeframe": "4h",
+    "retrace_pct": 0.618,
+    "retrace_pct_high": 0.725,
+    "stop": {
+      "anchor": "swing_low",
+      "op": null,
+      "k": null,
+      "unit": null,
+      "formula": "swing_low"
+    },
+    "target": {
+      "anchor": "swing_high",
+      "formula": "swing_high"
+    },
+    "entry": "retrace_touch"
+  }
+}

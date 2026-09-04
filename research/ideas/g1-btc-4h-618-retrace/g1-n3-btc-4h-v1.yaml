@@ -1,0 +1,79 @@
+id: g1-n3-btc-4h-v1
+kind: question
+title: Same as n5 cousin, fractal n=3
+instrument:
+  symbol: BTCUSDT
+  venue: binance
+  provider: binance
+  timeframe: 4h
+  timezone: UTC
+  exchange: binanceusdm
+data:
+  provider: binance
+  source: vision
+  exchange: binanceusdm
+  identity_note: Binance USD-M BTCUSDT perp.
+  cache_path: research/.cache/binance/binanceusdm/BTCUSDT/4h.csv
+  cache_sha256: 7460bb53204fac0c7030ca951d08116ff521eaf1d615866a53b54b7343d42f62
+  n_bars: 14610
+  actual_start: '2020-01-01 00:00:00+00:00'
+  actual_end: '2026-08-31 20:00:00+00:00'
+  load_note: observed loaded bars from vision monthly klines; not a pre-registered holdout
+discovery:
+  start: null
+  end: null
+  note: use all loaded bars of this series; do not invent missing years
+holdout:
+  start: null
+  end: null
+  note: holdout null until bars can lock a tail without emptying discovery
+population: events
+condition:
+- kind: retracement_zone
+  pct_low: 0.618
+  pct_high: 0.725
+  of: confirmed_swing
+  fractal_n: 3
+outcome:
+  name: target_before_stop
+  kind: flag
+  target: swing high
+  stop: swing low
+definitions:
+  swing_high: fractal n=3. Knowable at i+3.
+  swing_low: fractal n=3. Knowable at i+3.
+  stop: swing low
+  target: swing high
+stats:
+- n
+- target_rate
+- stop_rate
+- neither_rate
+forbidden:
+- forming_bar_signals
+- future_as_condition
+- quoting_pnl_from_this_ask
+- inventing_metrics_in_chat
+measure: swing_retrace
+question_ref: G1
+family: g1-btc-4h-v1
+fractal_n: 3
+named:
+  timeframe: 4h
+  retrace_pct: 0.618
+  retrace_pct_high: 0.725
+  stop:
+    anchor: swing_low
+    op: null
+    k: null
+    unit: null
+    formula: swing_low
+  target:
+    anchor: swing_high
+    formula: swing_high
+  entry: retrace_touch
+rules:
+  stop: swing low
+  target: swing high
+pct_low: 0.618
+pct_high: 0.725

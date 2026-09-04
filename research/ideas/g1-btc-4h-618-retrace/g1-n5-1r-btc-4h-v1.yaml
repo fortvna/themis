@@ -1,0 +1,88 @@
+id: g1-n5-1r-btc-4h-v1
+kind: strategy
+title: Enter 61.8-72.5 of confirmed n=5 swing, stop origin, target extreme
+family: g1-btc-4h-v1
+implements: strategies/retrace_swing.py
+requires_asks:
+- g1-n5-btc-4h-v1
+- g1-n3-btc-4h-v1
+instrument:
+  symbol: BTCUSDT
+  venue: binance
+  provider: binance
+  timeframe: 4h
+  timezone: UTC
+  exchange: binanceusdm
+data:
+  provider: binance
+  source: vision
+  exchange: binanceusdm
+  identity_note: Binance USD-M BTCUSDT perp.
+  cache_path: research/.cache/binance/binanceusdm/BTCUSDT/4h.csv
+  cache_sha256: 7460bb53204fac0c7030ca951d08116ff521eaf1d615866a53b54b7343d42f62
+  n_bars: 14610
+  actual_start: '2020-01-01 00:00:00+00:00'
+  actual_end: '2026-08-31 20:00:00+00:00'
+  load_note: observed loaded bars from vision monthly klines; not a pre-registered holdout
+discovery:
+  start: null
+  end: null
+  note: use all loaded bars of this series; do not invent missing years
+holdout:
+  start: null
+  end: null
+  note: holdout null until bars can lock a tail without emptying discovery
+costs:
+  product: usd_m_crypto
+  source_url: https://www.binance.com/en/fee/futureFee
+  as_of_utc: '2026-09-03'
+  vip: regular
+  maker: 0.0002
+  taker: 0.0005
+  bnb_discount: false
+  fill: next_open
+  commission_per_side: 0.0005
+  cost_unit: fraction_of_price
+  notes: Binance USD-M Futures Regular/VIP0. Published 2026-09-03. next_open fill uses taker
+    both sides. No BNB discount. No funding modeled. Ask does not apply this.
+  slippage_ticks: 1
+  tick_size: 0.1
+rules:
+  fill: next_open
+  entry: next open after closed-bar zone touch, swing already knowable
+  stop: swing low
+  target: swing high
+  calc_on_closed_bar: true
+forbidden:
+- forming_bar_signals
+- same_bar_fill
+- future_pivots
+kill:
+  min_trades: 30
+  max_drawdown_pct: 40
+  min_net_return: 0
+search_space: {}
+run_eligible: true
+walkforward_eligible: true
+tune_eligible: false
+fractal_n: 5
+pct_low: 0.618
+pct_high: 0.725
+named:
+  timeframe: 4h
+  retrace_pct: 0.618
+  retrace_pct_high: 0.725
+  stop:
+    anchor: swing_low
+    op: null
+    k: null
+    unit: null
+    formula: swing_low
+  target:
+    anchor: swing_high
+    formula: swing_high
+  entry: retrace_touch
+definitions:
+  stop: swing low
+  target: swing high
+definition: {}

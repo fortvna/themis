@@ -1,0 +1,30 @@
+schema: themis.idea.v1
+slug: g1-btc-4h-618-retrace
+title: G1 swing retrace 61.8-72.5 on BTCUSDT 4h
+english_origin: 4h swing high/low, enter retrace 61.8-72.5, stop swing low, target
+  swing high
+created_utc: '2026-09-04T01:28:26Z'
+instrument:
+  provider: binance
+  symbol: BTCUSDT
+  timeframe: 4h
+  exchange: binanceusdm
+named:
+  zone: 61.8-72.5
+  stop: swing origin
+  target: swing extreme
+costs_law: themis.fees fee_schedule BTCUSDT next_open regular
+current:
+  version: 1
+  spec_ids: &id001
+  - g1-n5-btc-4h-v1
+  - g1-n3-btc-4h-v1
+  - g1-n5-1r-btc-4h-v1
+versions:
+- version: 1
+  english: 4h swing high/low, enter retrace 61.8-72.5, stop swing low, target swing
+    high
+  parent: null
+  spec_ids: *id001
+  screen: null
+  screen_note: ask first. target_rate is not edge. costs from fees.py on later run.
