@@ -1,0 +1,120 @@
+"""Idea registry: slug, register, list, show, improve, run loop, screen from folders."""
+from __future__ import annotations
+
+import json
+import re
+import tempfile
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+from themis.ask import AskError, run_ask
+from themis.compiler import BANK, CompileError, compile_english, match_case
+from themis.named import has_named_trade_fields, parse_named
+from themis.paths import ideas_dir, repo_root
+from themis.report import write_idea_bundle
+from themis.spec import dump_yaml, load_yaml
+
+SCHEMA = "themis.idea.v1"
+
+# Stable bank slugs (open-spec §17). Same English → same slug.
+BANK_STABLE_SLUGS: dict[str, str] = {
+    "G1": "g1-retrace-618-725",
+    "G3": "g3-atr-react",
+    "R1": "r1-bounce-75",
+    "R2": "r2-reaction-n",
+    "R3": "r3-mae-mfe",
+    "G2": "g2-session-points",
+    "G4": "g4-best-po3-fvg",
+    "B0": "b0-75-1r-return",
+    "U1": "u1-monday-move",
+    "U2": "u2-yesterday-today",
+    "U6": "u6-daily-open-break",
+    "S1": "s1-monday-friday",
+    "S2": "s2-three-down",
+    "S5": "s5-top-decile",
+    "S12": "s12-session-fraction",
+    "L1": "l1-asia-london",
+    "L2": "l2-session-share",
+    "L3": "l3-asia-narrow",
+    "L4": "l4-london-breaks-asia",
+    "L5": "l5-london-open",
+}
+
+_CALL_IT_RE = re.compile(
+    r"\b(?:call it|name this|call this|name it)\s+([a-z0-9][a-z0-9-]{0,46}[a-z0-9]|[a-z0-9]{2})\b",
+    re.IGNORECASE,
+)
+_SLUG_RE = re.compile(r"^[a-z0-9](?:[a-z0-9]|-(?!-))*[a-z0-9]$|^[a-z0-9]{2}$")
+
+RETURN_NEEDLES = (
+    "what is the return",
+    "pnl",
+    "how good",
+    "backtest",
+    "drawdown",
+    "expectancy",
+    "edge after costs",
+)
+
+
+class IdeaError(RuntimeError):
+    """Idea registry / loop failure."""
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _rel(path: Path, root: Path) -> str:
+    try:
+        return str(path.resolve().relative_to(root.resolve()))
+    except ValueError:
+        return str(path)
+
+
+def validate_slug(slug: str) -> str:
+    """Return slug if valid; raise IdeaError otherwise. Rules: [a-z0-9-]{2,48}, no leading/trailing hyphen, no --."""
+    s = (slug or "").strip().lower()
+    if len(s) < 2 or len(s) > 48:
+        raise IdeaError(f"slug length must be 2–48, got {len(s)}: {slug!r}")
+    if s[0] == "-" or s[-1] == "-":
+        raise IdeaError(f"slug may not lead/trail with hyphen: {slug!r}")
+    if "--" in s:
+        raise IdeaError(f"slug may not contain '--': {slug!r}")
+    if not re.fullmatch(r"[a-z0-9-]+", s):
+        raise IdeaError(f"slug must match [a-z0-9-]{{2,48}}: {slug!r}")
+    if not _SLUG_RE.match(s):
+        raise IdeaError(f"invalid slug: {slug!r}")
+    return s
+
+
+def slugify(text: str) -> str:
+    """Normalize arbitrary text into a valid slug (may truncate)."""
+    s = (text or "").lower().strip()
+    s = re.sub(r"[^a-z0-9]+", "-", s)
+    s = re.sub(r"-{2,}", "-", s).strip("-")
+    if len(s) < 2:
+        s = (s + "xx")[:2]
+    if len(s) > 48:
+        s = s[:48].rstrip("-")
+        if len(s) < 2:
+            s = "idea-xx"
+    return validate_slug(s)
+
+
+def extract_call_it(english: str) -> str | None:
+    m = _CALL_IT_RE.search(english or "")
+    if not m:
+        return None
+    try:
+        return validate_slug(m.group(1).lower())
+    except IdeaError:
+        return None
+
+
+def _stop_tag(named: dict[str, Any]) -> str:
+    stop = named.get("stop")
+    if not isinstance(stop, dict):
+        return "stop"
+    anchor = (stop.get("anchor") or "stop").rep
