@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from themis.ask import AskError
 from themis.ideas import (
     IdeaError,
     english_wants_run,
@@ -16,6 +17,7 @@ from themis.ideas import (
     propose_slug,
     register,
     run_idea_loop,
+    save_idea,
     screen_from_folders,
     screen_one_metrics,
     slugify,
@@ -119,8 +121,6 @@ def test_improve_preserves_parent(tmp_path: Path):
     parent_ids = list(parent["versions"][0]["spec_ids"])
     parent["versions"][0]["runs"] = ["research/runs/fake-parent"]
     parent["versions"][0]["screen"] = "weak"
-    from themis.ideas import save_idea
-
     save_idea(parent, root=tmp_path)
 
     register(
@@ -307,11 +307,13 @@ def test_run_idea_loop_asks_and_screens(tmp_path: Path, monkeypatch):
         raise AssertionError("bounce English must not auto-run")
 
     def fake_bundle(slug, **_kw):
-        p = tmp_path / "research" / "ideas" / slug / "latest.html"
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text("<html></html>\n")
-        (p.with_suffix(".md")).write_text("# stub\n")
-        return p
+        d = tmp_path / "research" / "ideas" / slug
+        d.mkdir(parents=True, exist_ok=True)
+        html = d / "latest.html"
+        md = d / "latest.md"
+        html.write_text("<html></html>\n")
+        md.write_text("# stub\n")
+        return {"html": html, "md": md}
 
     monkeypatch.setattr("themis.ideas.run_ask", fake_ask)
     monkeypatch.setattr("themis.ideas.run_strategy", boom)
@@ -327,6 +329,8 @@ def test_run_idea_loop_asks_and_screens(tmp_path: Path, monkeypatch):
     assert out["slug"] == "r1-bounce-75"
     assert len(asked) >= 2
     assert out["screen"] == "dead"
+    assert "html" in out["reports"] and "md" in out["reports"]
+    assert "ipynb" not in out["reports"]
     idea = load_idea("r1-bounce-75", root=tmp_path)
     assert idea["versions"][0]["screen"] == "dead"
     assert len(idea["versions"][0]["runs"]) >= 2
@@ -367,10 +371,13 @@ def test_run_idea_loop_auto_run_on_pnl(tmp_path: Path, monkeypatch):
         return folder
 
     def fake_bundle(slug, **_kw):
-        p = tmp_path / "research" / "ideas" / slug / "latest.html"
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text("<html></html>\n")
-        return p
+        d = tmp_path / "research" / "ideas" / slug
+        d.mkdir(parents=True, exist_ok=True)
+        html = d / "latest.html"
+        md = d / "latest.md"
+        html.write_text("<html></html>\n")
+        md.write_text("# stub\n")
+        return {"html": html, "md": md}
 
     monkeypatch.setattr("themis.ideas.run_ask", fake_ask)
     monkeypatch.setattr("themis.ideas.run_strategy", fake_run)
@@ -446,7 +453,8 @@ def test_write_idea_bundle_generic_rates(tmp_path: Path):
     )
     from themis.report import write_idea_bundle
 
-    write_idea_bundle("demo-r1", root=tmp_path, english="75% bounce")
+    written = write_idea_bundle("demo-r1", root=tmp_path, english="75% bounce")
+    assert "html" in written and "ipynb" in written and "md" in written
     html = (idea_dir / "latest.html").read_text()
     assert "bounce_rate=40.0%" in html
     assert "COMEX" in html
@@ -454,9 +462,217 @@ def test_write_idea_bundle_generic_rates(tmp_path: Path):
     md = (idea_dir / "latest.md").read_text()
     assert "screen: weak" in md
     assert "research/runs/r1fold" in md
+    assert "See latest.html and latest.ipynb." in md
     nb = (idea_dir / "latest.ipynb").read_text()
     assert "themis.ask.measure" in nb
     assert "atr_complete_rivals" not in nb
+    assert "react_plus" in nb
+    assert "react_minus" in nb
+
+
+def test_write_idea_bundle_includes_g3_react_rates(tmp_path: Path):
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "open-spec.md").write_text("# stub\n")
+    run = tmp_path / "research" / "runs" / "g3fold"
+    run.mkdir(parents=True)
+    (run / "metrics.json").write_text(
+        json.dumps(
+            {
+                "n_days": 2415,
+                "n_touch_plus33": 800,
+                "n_touch_minus33": 790,
+                "react_plus": 0.412,
+                "react_minus": 0.455,
+                "react_plus_ci95": 0.034,
+                "react_minus_ci95": 0.035,
+                "identity": {
+                    "provider": "binance",
+                    "symbol": "BTCUSDT",
+                    "timeframe": "4h",
+                    "not": "not COMEX",
+                },
+            }
+        )
+    )
+    (run / "meta.json").write_text(
+        json.dumps(
+            {
+                "kind": "question",
+                "spec_id": "g3-atr14-through-btc-4h-v1",
+                "symbol": "BTCUSDT",
+                "thin": False,
+            }
+        )
+    )
+    idea_dir = tmp_path / "research" / "ideas" / "g3-atr-react"
+    idea_dir.mkdir(parents=True)
+    dump_yaml(
+        {
+            "schema": "themis.idea.v1",
+            "slug": "g3-atr-react",
+            "title": "G3 react",
+            "english_origin": "Prior-day ATR, lines at -33% and +33%, does price react",
+            "current": {"version": 1, "spec_ids": ["g3-atr14-through-btc-4h-v1"]},
+            "versions": [
+                {
+                    "version": 1,
+                    "english": "Prior-day ATR, lines at -33% and +33%, does price react",
+                    "spec_ids": ["g3-atr14-through-btc-4h-v1"],
+                    "runs": ["research/runs/g3fold"],
+                    "screen": "weak",
+                }
+            ],
+        },
+        idea_dir / "idea.yaml",
+    )
+    from themis.report import write_idea_bundle
+
+    written = write_idea_bundle("g3-atr-react", root=tmp_path)
+    html = written["html"].read_text()
+    assert "react_plus=41.2%" in html
+    assert "react_minus=45.5%" in html
+    assert "BTCUSDT" in html
+    nb = written["ipynb"].read_text()
+    assert "react_plus" in nb
+    assert "react_minus" in nb
+    assert "themis.ask.measure" in nb
+    assert "atr_complete_rivals" not in nb
+
+
+def test_write_idea_bundle_empty_runs_does_not_advertise_html(tmp_path: Path):
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "open-spec.md").write_text("# stub\n")
+    idea_dir = tmp_path / "research" / "ideas" / "empty-idea"
+    idea_dir.mkdir(parents=True)
+    (idea_dir / "latest.html").write_text("<html>stale COMEX residue</html>\n")
+    (idea_dir / "latest.ipynb").write_text("{}\n")
+    dump_yaml(
+        {
+            "schema": "themis.idea.v1",
+            "slug": "empty-idea",
+            "title": "empty",
+            "english_origin": "none",
+            "current": {"version": 1, "spec_ids": []},
+            "versions": [
+                {
+                    "version": 1,
+                    "english": "none",
+                    "spec_ids": [],
+                    "runs": [],
+                    "screen": None,
+                }
+            ],
+        },
+        idea_dir / "idea.yaml",
+    )
+    from themis.report import write_idea_bundle
+
+    written = write_idea_bundle("empty-idea", root=tmp_path)
+    assert set(written) == {"md"}
+    assert written["md"] == idea_dir / "latest.md"
+    md = written["md"].read_text()
+    assert "See latest.html and latest.ipynb." not in md
+    assert "were not written" in md
+    assert not (idea_dir / "latest.html").exists()
+    assert not (idea_dir / "latest.ipynb").exists()
+
+
+R1_ENGLISH = (
+    "How many times has price bounced after a 75% retracement on this series, this timeframe?"
+)
+
+
+def test_run_idea_loop_ask_fail_first_create_leaves_no_idea(tmp_path: Path, monkeypatch):
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "open-spec.md").write_text("# stub\n")
+    (tmp_path / "research" / "ideas").mkdir(parents=True)
+
+    def fail_ask(*_a, **_k):
+        raise AskError("no bars")
+
+    monkeypatch.setattr("themis.ideas.run_ask", fail_ask)
+    monkeypatch.setattr("themis.ideas.write_idea_bundle", lambda *a, **k: {"md": tmp_path})
+
+    with pytest.raises(IdeaError, match="ask failed"):
+        run_idea_loop(R1_ENGLISH, SERIES, root=tmp_path, offline=True)
+    yaml_p = tmp_path / "research" / "ideas" / "r1-bounce-75" / "idea.yaml"
+    assert not yaml_p.exists()
+
+
+def test_run_idea_loop_ask_fail_partial_records_runs(tmp_path: Path, monkeypatch):
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "open-spec.md").write_text("# stub\n")
+    asked: list[str] = []
+
+    def fake_ask(spec_path, **_kw):
+        asked.append(str(spec_path))
+        if len(asked) >= 2:
+            raise AskError("second rival failed")
+        folder = tmp_path / "research" / "runs" / "ask-partial"
+        _write_run(
+            folder,
+            {
+                "n": 100,
+                "target_rate": 0.30,
+                "stop_rate": 0.60,
+                "target_rate_ci95": 0.05,
+                "stop_rate_ci95": 0.05,
+            },
+        )
+        return folder
+
+    monkeypatch.setattr("themis.ideas.run_ask", fake_ask)
+    monkeypatch.setattr("themis.ideas.write_idea_bundle", lambda *a, **k: {"md": tmp_path})
+
+    with pytest.raises(IdeaError, match="ask failed"):
+        run_idea_loop(R1_ENGLISH, SERIES, root=tmp_path, offline=True)
+    idea = load_idea("r1-bounce-75", root=tmp_path)
+    assert len(idea["versions"][0]["runs"]) == 1
+    assert idea["versions"][0]["runs"][0].endswith("ask-partial")
+    assert idea["versions"][0]["screen"] == "dead"
+    assert "ask failed" in (idea["versions"][0].get("screen_note") or "")
+    assert "second rival failed" in (idea["versions"][0].get("screen_note") or "")
+
+
+def test_run_idea_loop_ask_fail_improve_keeps_history(tmp_path: Path, monkeypatch):
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "open-spec.md").write_text("# stub\n")
+    (tmp_path / "research" / "ideas").mkdir(parents=True)
+    register(
+        "r1-bounce-75",
+        "parent english",
+        SERIES,
+        spec_ids=["r1-old-a", "r1-old-b"],
+        root=tmp_path,
+    )
+    parent = load_idea("r1-bounce-75", root=tmp_path)
+    parent["versions"][0]["runs"] = ["research/runs/fake-parent"]
+    parent["versions"][0]["screen"] = "weak"
+    save_idea(parent, root=tmp_path)
+
+    def fail_ask(*_a, **_k):
+        raise AskError("improve boom")
+
+    monkeypatch.setattr("themis.ideas.run_ask", fail_ask)
+    monkeypatch.setattr("themis.ideas.write_idea_bundle", lambda *a, **k: {"md": tmp_path})
+
+    with pytest.raises(IdeaError, match="ask failed"):
+        run_idea_loop(
+            R1_ENGLISH,
+            SERIES,
+            name="r1-bounce-75",
+            improve=True,
+            root=tmp_path,
+            offline=True,
+        )
+    idea = load_idea("r1-bounce-75", root=tmp_path)
+    assert len(idea["versions"]) == 2
+    assert idea["versions"][0]["runs"] == ["research/runs/fake-parent"]
+    assert idea["versions"][0]["screen"] == "weak"
+    assert idea["versions"][1]["screen"] == "weak"
+    assert idea["versions"][1]["runs"] == []
+    assert "ask failed" in (idea["versions"][1].get("screen_note") or "")
+    assert "improve boom" in (idea["versions"][1].get("screen_note") or "")
 
 
 def test_cli_idea_defaults_gold():

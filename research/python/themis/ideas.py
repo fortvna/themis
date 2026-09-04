@@ -492,6 +492,44 @@ def _title_for(english: str, case_id: str | None) -> str:
     return (english or "").strip()[:120] or "idea"
 
 
+def _record_version(
+    slug: str,
+    run_folders: list[Path],
+    *,
+    named: dict[str, Any],
+    notes: list[str],
+    root: Path,
+    extra_note: str | None = None,
+) -> tuple[str, str]:
+    """Write screen / screen_note / runs onto the current version. Idea must already be registered."""
+    screen = screen_from_folders(run_folders, root=root)
+    rel_runs = [_rel(f, root) for f in run_folders]
+    has_strategy = any(
+        (json.loads((f / "meta.json").read_text()).get("kind") == "strategy")
+        if (f / "meta.json").exists()
+        else False
+        for f in run_folders
+    )
+    screen_note = (
+        "run screen from strategy folders. not kept. quote metrics.json."
+        if has_strategy
+        else "ask only. rates are outcomes, not edge. not pnl."
+    )
+    extra = list(notes)
+    if extra_note:
+        extra.append(extra_note)
+    if extra:
+        screen_note = screen_note + " " + "; ".join(extra)
+    idea = load_idea(slug, root=root)
+    if idea.get("versions"):
+        idea["versions"][-1]["runs"] = rel_runs
+        idea["versions"][-1]["screen"] = screen
+        idea["versions"][-1]["screen_note"] = screen_note
+        idea["versions"][-1]["named"] = named
+    save_idea(idea, root=root)
+    return screen, screen_note
+
+
 def run_idea_loop(
     english: str,
     series: dict[str, str],
@@ -534,18 +572,24 @@ def run_idea_loop(
 
     spec_ids = [str(p["id"]) for p in (job.get("plan") or []) if p.get("id")]
     case_id = job.get("case_id")
-    idea = register(
-        slug,
-        english,
-        series,
-        spec_ids=spec_ids,
-        title=_title_for(english, case_id if isinstance(case_id, str) else None),
-        named=named,
-        job=job.get("written"),
-        case_id=case_id if isinstance(case_id, str) and case_id != "NAMED" else None,
-        improve=improve,
-        root=root,
-    )
+    register_kw: dict[str, Any] = {
+        "slug": slug,
+        "english": english,
+        "series": series,
+        "spec_ids": spec_ids,
+        "title": _title_for(english, case_id if isinstance(case_id, str) else None),
+        "named": named,
+        "job": job.get("written"),
+        "case_id": case_id if isinstance(case_id, str) and case_id != "NAMED" else None,
+        "root": root,
+    }
+    # First create: register after ≥1 ask folder. Improve: register first; on ask failure persist screen/runs then re-raise.
+    if improve:
+        register(**register_kw, improve=True)
+    elif idea_yaml_path(slug, root=root).exists():
+        raise IdeaError(
+            f"idea already exists: {slug}. use themis idea improve --name {slug}"
+        )
 
     network = not offline
     run_folders: list[Path] = []
@@ -562,8 +606,23 @@ def run_idea_loop(
         try:
             folder = run_ask(_spec_with_csv(spec_path, csv_path), root=root, network=network)
         except AskError as e:
-            raise IdeaError(f"ask failed for {step.get('id')}: {e}") from e
+            err = f"ask failed for {step.get('id')}: {e}"
+            if improve or run_folders:
+                if not improve:
+                    register(**register_kw, improve=False)
+                _record_version(
+                    slug,
+                    run_folders,
+                    named=named,
+                    notes=notes,
+                    root=root,
+                    extra_note=err,
+                )
+            raise IdeaError(err) from e
         run_folders.append(folder)
+
+    if not improve:
+        register(**register_kw, improve=False)
 
     if english_wants_run(english):
         ran_any = False
@@ -593,40 +652,24 @@ def run_idea_loop(
         if not ran_any:
             notes.append("english asked return/pnl but no strategy run wrote a folder")
 
-    screen = screen_from_folders(run_folders, root=root)
+    screen, screen_note = _record_version(
+        slug, run_folders, named=named, notes=notes, root=root
+    )
     rel_runs = [_rel(f, root) for f in run_folders]
-    has_strategy = any(
-        (json.loads((f / "meta.json").read_text()).get("kind") == "strategy")
-        if (f / "meta.json").exists()
-        else False
-        for f in run_folders
-    )
-    screen_note = (
-        "run screen from strategy folders. not kept. quote metrics.json."
-        if has_strategy
-        else "ask only. rates are outcomes, not edge. not pnl."
-    )
-    if notes:
-        screen_note = screen_note + " " + "; ".join(notes)
-
-    idea = load_idea(slug, root=root)
-    if idea.get("versions"):
-        idea["versions"][-1]["runs"] = rel_runs
-        idea["versions"][-1]["screen"] = screen
-        idea["versions"][-1]["screen_note"] = screen_note
-        idea["versions"][-1]["named"] = named
-    save_idea(idea, root=root)
 
     dest = ideas_dir(root) / slug
+    reports: dict[str, str] = {}
     try:
-        bundle = write_idea_bundle(slug, root=root, english=english)
+        written = write_idea_bundle(slug, root=root, english=english)
+        reports = {k: _rel(Path(v), root) for k, v in (written or {}).items()}
     except Exception as e:
         notes.append(f"report bundle failed: {e}")
-        bundle = dest / "latest.html"
-        screen_note = screen_note + " " + "; ".join(notes)
-        if idea.get("versions"):
-            idea["versions"][-1]["screen_note"] = screen_note
-            save_idea(idea, root=root)
+        screen, screen_note = _record_version(
+            slug, run_folders, named=named, notes=notes, root=root
+        )
+        md = dest / "latest.md"
+        if md.exists():
+            reports["md"] = _rel(md, root)
     return {
         "status": "ok",
         "slug": slug,
@@ -636,11 +679,6 @@ def run_idea_loop(
         "runs": rel_runs,
         "idea": _rel(dest / "idea.yaml", root),
         "job": _job_rel(job.get("written"), root),
-        "reports": {
-            "html": _rel(dest / "latest.html", root),
-            "md": _rel(dest / "latest.md", root),
-            "ipynb": _rel(dest / "latest.ipynb", root),
-            "bundle": _rel(Path(bundle), root) if bundle else None,
-        },
+        "reports": reports,
         "note": "quote metrics only from run folders. screen is not kept.",
     }

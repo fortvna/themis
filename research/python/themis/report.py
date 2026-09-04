@@ -349,8 +349,8 @@ metrics"""
     return out
 
 
-def write_idea_bundle(slug: str, *, root: Path | None = None, english: str = "") -> Path:
-    """latest.md + html + ipynb from idea.yaml runs."""
+def write_idea_bundle(slug: str, *, root: Path | None = None, english: str = "") -> dict[str, Path]:
+    """latest.md always; html/ipynb only when current-version run folders exist on disk."""
     import yaml
 
     root = root or research_root()
@@ -373,9 +373,15 @@ def write_idea_bundle(slug: str, *, root: Path | None = None, english: str = "")
     eng = english or idea.get("english_origin") or ""
     dest = root / "research" / "ideas" / slug
     dest.mkdir(parents=True, exist_ok=True)
+    written: dict[str, Path] = {}
     if folders:
-        write_idea_html(slug, folders, root=root, title=title)
-        write_idea_notebook(slug, folders, root=root, english=eng)
+        written["html"] = write_idea_html(slug, folders, root=root, title=title)
+        written["ipynb"] = write_idea_notebook(slug, folders, root=root, english=eng)
+    else:
+        reports_html = root / "research" / "reports" / f"{slug}.html"
+        for stale in (dest / "latest.html", dest / "latest.ipynb", reports_html):
+            if stale.exists():
+                stale.unlink()
     last = versions[-1] if versions else {}
     md_lines = [
         f"# Idea `{slug}`",
@@ -394,9 +400,20 @@ def write_idea_bundle(slug: str, *, root: Path | None = None, english: str = "")
         md_lines.append(f"- `{r}`")
     if not runs:
         md_lines.append("- (none yet)")
-    md_lines.extend(["", "See latest.html and latest.ipynb.", ""])
-    (dest / "latest.md").write_text("\n".join(md_lines), encoding="utf-8")
-    return dest / "latest.html"
+    if folders:
+        md_lines.extend(["", "See latest.html and latest.ipynb.", ""])
+    else:
+        md_lines.extend(
+            [
+                "",
+                "No run folders on disk; latest.html and latest.ipynb were not written.",
+                "",
+            ]
+        )
+    md_path = dest / "latest.md"
+    md_path.write_text("\n".join(md_lines), encoding="utf-8")
+    written["md"] = md_path
+    return written
 
 
 def _md(text: str) -> dict:
@@ -433,6 +450,7 @@ def write_idea_notebook(slug: str, folders: list[Path], *, root: Path | None = N
             rels.append(str(p.resolve().relative_to(root.resolve())))
         except ValueError:
             rels.append(str(p))
+    summary_keys = ("n", "n_days") + _IDEA_RATE_KEYS
     cells = [
         _md(
             f"""# Idea `{slug}`
@@ -466,7 +484,7 @@ for rel in RUNS:
     series = load_from_spec(spec, root=repo, network=False)
     metrics, table = measure(spec, series)
     rows.append((spec.get("id"), series.identity, metrics, table))
-[(r[0], r[1], {{k: r[2].get(k) for k in ("n", "n_days", "bounce_rate", "target_rate", "stop_rate", "complete_rate") if k in r[2]}}) for r in rows]"""
+[(r[0], r[1], {{k: r[2].get(k) for k in {summary_keys!r} if k in r[2]}}) for r in rows]"""
         ),
         _md(
             """Chat quotes `research/runs/<id>/metrics.json`. If a cell disagrees with the folder, the folder wins until you freeze a new spec."""

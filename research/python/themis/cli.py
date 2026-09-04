@@ -209,8 +209,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.cmd == "report":
             if args.idea:
                 from themis.report import write_idea_bundle
-                path = write_idea_bundle(args.idea)
-                print(str(path))
+                written = write_idea_bundle(args.idea)
+                path = written.get("html") or written.get("md")
+                print(str(path) if path else "")
                 return 0
             if not args.run:
                 print("report needs --run or --idea", file=sys.stderr)

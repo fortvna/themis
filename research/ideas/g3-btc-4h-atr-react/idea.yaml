@@ -1,5 +1,7 @@
 schema: themis.idea.v1
 slug: g3-btc-4h-atr-react
+obsolete: true
+superseded_by: g3-atr-react
 title: G3 prior-day ATR ±33% react on BTCUSDT 4h
 english_origin: Prior-day ATR, lines at -33% and +33%, does price react
 created_utc: '2026-09-04T01:34:21Z'
