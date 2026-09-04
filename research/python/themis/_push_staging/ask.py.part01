@@ -1,0 +1,101 @@
+         break
+            if hit_t:
+                target_hit, bars_to = True, k - touched
+                break
+            if hit_s:
+                stop_hit, bars_to = True, k - touched
+                break
+        rows.append({"side": "long", "n": n, "touch_ts": str(df.index[touched]), "target_first": bool(target_hit), "stop_first": bool(stop_hit), "open_end": bars_to is None, "mae": mae, "mfe": mfe})
+    used_s: set[int] = set()
+    for lo in sl:
+        knowable = lo + n
+        if knowable >= len(df) - 2:
+            continue
+        highs_before = [j for j in sh if j < lo]
+        if not highs_before:
+            continue
+        hi = highs_before[-1]
+        origin = float(df["high"].iloc[hi])
+        extreme = float(df["low"].iloc[lo])
+        rng = origin - extreme
+        if rng <= 0:
+            continue
+        z_hi = extreme + pct_high * rng
+        z_lo = extreme + pct_low * rng
+        touched = None
+        for i in range(knowable + 1, len(df)):
+            bar = df.iloc[i]
+            if bar["low"] <= z_hi and bar["high"] >= z_lo:
+                touched = i
+                break
+            if bar["close"] > origin:
+                break
+        if touched is None or touched in used_s:
+            continue
+        used_s.add(touched)
+        target_hit = stop_hit = False
+        bars_to = None
+        mae = mfe = 0.0
+        entry = float(df["close"].iloc[touched])
+        for k in range(touched + 1, len(df)):
+            fb = df.iloc[k]
+            mae = max(mae, float(fb["high"]) - entry)
+            mfe = max(mfe, entry - float(fb["low"]))
+            hit_t = fb["low"] <= extreme
+            hit_s = fb["high"] >= origin
+            if hit_t and hit_s:
+                bars_to = k - touched
+                break
+            if hit_t:
+                target_hit, bars_to = True, k - touched
+                break
+            if hit_s:
+                stop_hit, bars_to = True, k - touched
+                break
+        rows.append({"side": "short", "n": n, "touch_ts": str(df.index[touched]), "target_first": bool(target_hit), "stop_first": bool(stop_hit), "open_end": bars_to is None, "mae": mae, "mfe": mfe})
+    return pd.DataFrame(rows)
+
+
+def _atr_daily(d: pd.DataFrame, n: int) -> pd.Series:
+    prev = d.shift(1)
+    tr = pd.concat([d.high - d.low, (d.high - prev.close).abs(), (d.low - prev.close).abs()], axis=1).max(axis=1)
+    return tr.rolling(n).mean()
+
+
+def _spec_field(spec: dict[str, Any], key: str, default: Any = None) -> Any:
+    if spec.get(key) is not None:
+        return spec[key]
+    for c in spec.get("condition") or []:
+        if isinstance(c, dict) and c.get(key) is not None:
+            return c[key]
+    return default
+
+
+def bounce_retrace_events(
+    df: pd.DataFrame,
+    *,
+    impulse_bars: int,
+    impulse_atr: float,
+    retrace_pct: float,
+    bounce: str,
+    atr_n: int = 14,
+    horizon_bars: int | None = None,
+) -> pd.DataFrame:
+    """N-bar K-ATR impulse, retrace_pct zone touch, bounce flag. Not pnl.
+
+    Impulse (open-spec is silent beyond "N-bar move of K ATR"; this is the
+    cases.py R1 reading): a window of exactly N closed bars whose last bar is
+    the window extreme, origin is the opposite extreme earlier in the window,
+    and (extreme-origin) >= K * ATR. ATR is SMA of true range on this
+    timeframe, length atr_n (default 14), knowable at the bar before the
+    impulse completes (atr[end-1]) — no look-ahead.
+
+    Zone: retrace_pct of that frozen impulse range. Touch is the first closed
+    bar after the impulse is knowable whose range intersects the zone.
+    Close through origin before touch abandons the impulse (not an event).
+
+    Bounce is an outcome after touch, not an entry:
+      through_50 — close back through the midpoint of origin and extreme
+      atr — favorable excursion of 1*ATR from the zone, ATR knowable at touch
+    Horizon, if set, caps bars after touch (inclusive of the touch bar as 0).
+    Same-bar close through origin is invalidation (pessimistic, no 
