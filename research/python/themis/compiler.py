@@ -9,6 +9,7 @@ from typing import Any
 
 from themis import auth
 from themis import named as named_fields
+from themis.fees import fee_schedule
 from themis.metrics import tick_size
 from themis.paths import jobs_dir, questions_dir, repo_root, specs_dir
 from themis.spec import dump_yaml
@@ -288,11 +289,9 @@ def _strategy(sid: str, title: str, series: dict[str, str], *, family: str, impl
         "discovery": discovery,
         "holdout": holdout,
         "costs": {
-            "commission_per_side": 0.0004,
+            **fee_schedule(series["symbol"], fill=(rules or {}).get("fill") or "next_open"),
             "slippage_ticks": 1,
             "tick_size": tick_size(series["symbol"], {}),
-            "cost_unit": "fraction_of_price",
-            "notes": "Placeholder. No funding. Not a live claim. Zero only as written 0 plus a reason.",
         },
         "rules": rules,
         "forbidden": ["forming_bar_signals", "same_bar_fill", "future_pivots"],
