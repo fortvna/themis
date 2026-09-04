@@ -11,28 +11,31 @@ Remote: https://github.com/fortvna/themis
 
 ## Objective (this milestone)
 
-File import only. Copy scattered VM files into this repo. No product requirements invented this turn. SPEC.md left empty.
+SPEC.md v0 canon: idea → YAML → pandas screen → named slug → MD+HTML with charts + Sharpe/Sortino/Calmar. Named-stop pin. Stack named: ADR/stack-v1.md. Caesar accept. Vulcan parked until accept.
 
 ## Status
 
-File-first import complete. Originals deleted 2026-08-28 after Arafat said DELETE ORIGINALS.
+Caesar accepted SPEC.md v0 and ADR/stack-v1.md on 2026-09-01. M1 is live. Vulcan forges. Prometheus reviews commits. No push this turn.
 
 ## MUST in scope
 
-- Company files under `/workspace/fortuna/`
-- Project repo at `/workspace/fortuna/projects/themis` with README.md, WARROOM.md, empty SPEC.md
+- SPEC.md v0 with F-50 ideas, F-60 metrics, F-70 dual reports, F-80 prompt
+- RESEARCH.md
 - Git status clean
+- No git push
 
 ## Out of scope
 
-- Product requirements
-- Force-push
-- Inventing stack or APIs
+- Product code this turn
+- Force-push / remote push
+- Product stack change without ADR
 
 ## Decisions
 
 - 2026-08-28 named-stop pin+refuse (see ADR/live-compile-named-stop.md)
 - 2026-08-28 all Themis work stays in this repo. No other trees. Chat WR-themis. Remote: https://github.com/fortvna/themis.
+- 2026-09-01 stack: Python 3.11 + pandas/numpy/pyyaml + inline SVG (`ADR/stack-v1.md`). matplotlib not runtime.
+- 2026-09-01 Caesar accepted SPEC.md v0 + ADR/stack-v1.md. M1 unlocked.
 
 ## Blockers
 
@@ -40,8 +43,7 @@ none
 
 ## Next action (who, file)
 
-All Themis work in this repo. Minerva parked until Arafat opens SPEC.md. SPEC.md still empty.
-
+Vulcan: M1 MUST in `research/python/` (F-50 ideas, F-60 metrics, F-70 reports, F-80 prompt, F-72 strategy SVG). Prometheus: review. No git push unless Arafat says this turn.
 
 ## Imported (2026-08-28 file-first)
 
@@ -79,4 +81,4 @@ Not copied (junk / not source): GitHub 404 JSON, GitHub API push payloads, pytes
 
 ## Next action (who, file) — after import
 
-All Themis work in this repo. Minerva parked until Arafat opens SPEC.md. SPEC.md still empty.
+Done. SPEC.md v0 is in the repo.
