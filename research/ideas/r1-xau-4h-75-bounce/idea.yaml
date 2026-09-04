@@ -1,0 +1,43 @@
+schema: themis.idea.v1
+slug: r1-xau-4h-75-bounce
+title: 75% retrace bounce on Binance gold 4h, Binance TradFi Regular taker fees
+english_origin: "How many times has price bounced after a 75% retracement in gold, 4 hour, on Binance?"
+created_utc: 2026-09-03T20:53:00Z
+instrument:
+  provider: binance
+  symbol: XAUUSDT
+  timeframe: 4h
+  exchange: binanceusdm
+named:
+  retrace_pct: 0.75
+  costs:
+    venue: binanceusdm
+    product: tradfi_perps
+    source_url: https://www.binance.com/en/fee/tradFiFee
+    as_of_utc: 2026-09-03T22:07:00Z
+    vip: regular
+    maker: 0.0000
+    taker: 0.0004
+    bnb_discount: false
+    commission_per_side: 0.0004
+    fill: next_open
+    notes: "Binance TradFi Futures Regular table. next_open fill = taker both sides. No BNB. No funding. USD-M generic is 0.0200%/0.0500% and is not this series."
+current:
+  version: 1
+  spec_ids:
+    - r1-imp12-through50-xau-4h-v1
+    - r1-imp8-atr-xau-4h-v1
+versions:
+  - version: 1
+    english: "How many times has price bounced after a 75% retracement in gold, 4 hour, on Binance?"
+    parent: null
+    named:
+      symbol: XAUUSDT
+      timeframe: 4h
+      retrace_pct: 0.75
+      commission_per_side: 0.0004
+    spec_ids:
+      - r1-imp12-through50-xau-4h-v1
+      - r1-imp8-atr-xau-4h-v1
+    screen: null
+    screen_note: "bounce_rate is an outcome, not edge. costs are Binance TradFi Regular taker 0.0400% per next_open fill, applied only on a later run."

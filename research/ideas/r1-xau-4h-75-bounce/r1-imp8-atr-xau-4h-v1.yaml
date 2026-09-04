@@ -1,0 +1,80 @@
+id: r1-imp8-atr-xau-4h-v1
+kind: question
+title: Bounce after 75% retracement imp8-atr
+measure: bounce_retrace
+question_ref: R1
+family: r1-xau-4h-v1
+instrument:
+  symbol: XAUUSDT
+  venue: binance
+  provider: binance
+  timeframe: 4h
+  timezone: UTC
+  exchange: binanceusdm
+data:
+  provider: binance
+  source: vision
+  exchange: binanceusdm
+  identity_note: Binance USD-M XAUUSDT perp. Not COMEX. Not another venue.
+  cache_path: research/.cache/binance/binanceusdm/XAUUSDT/4h.csv
+  cache_sha256: bb9d008535089a87cc2e3888afd076ffa2789bb9fc306973637fde9a62e75782
+  n_bars: 1582
+  actual_start: "2025-12-11 08:00:00+00:00"
+  actual_end: "2026-08-31 20:00:00+00:00"
+  load_note: observed loaded bars from vision monthly klines; not a pre-registered holdout
+discovery:
+  start: null
+  end: null
+  note: use all loaded bars of this series; do not invent missing years
+holdout:
+  start: null
+  end: null
+  note: holdout null until bars can lock a tail without emptying discovery
+population: events
+named:
+  retrace_pct: 0.75
+  entry: retrace_touch
+  commission_per_side: 0.0004
+pct_low: 0.75
+pct_high: 0.75
+impulse_bars: 8
+impulse_atr: 1.2
+bounce: atr
+retrace_pct: 0.75
+condition:
+  - kind: retracement_zone
+    pct_low: 0.75
+    pct_high: 0.75
+    impulse_bars: 8
+    impulse_atr: 1.2
+    bounce: atr
+outcome:
+  name: bounced
+  kind: flag
+definitions:
+  impulse: 8-bar move of 1.2 ATR
+  zone: 75% retrace of that impulse
+  bounce: 1x ATR reaction
+stats:
+  - n
+  - bounce_rate
+costs:
+  venue: binanceusdm
+  product: tradfi_perps
+  source_url: https://www.binance.com/en/fee/tradFiFee
+  as_of_utc: 2026-09-03T22:07:00Z
+  vip: regular
+  maker: 0.0000
+  taker: 0.0004
+  bnb_discount: false
+  commission_per_side: 0.0004
+  slippage_ticks: 1
+  tick_size: 0.01
+  cost_unit: fraction_of_price
+  fill: next_open
+  notes: Binance TradFi Futures Regular. next_open = taker both sides (0.0400%). No BNB. No funding. Ask does not apply this.
+forbidden:
+  - forming_bar_signals
+  - future_as_condition
+  - quoting_pnl_from_this_ask
+  - inventing_metrics_in_chat
