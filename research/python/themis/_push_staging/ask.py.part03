@@ -1,0 +1,111 @@
+-1] <= win_l[:-1].min():
+            rel_hi = int(np.argmax(win_h))
+            if rel_hi < n - 1:
+                origin_px = float(win_h[rel_hi])
+                extreme_px = float(win_l[-1])
+                rng = origin_px - extreme_px
+                if rng > 0 and rng >= thresh:
+                    cand.append(("short", origin_px, extreme_px, rng))
+        if not cand:
+            i += 1
+            continue
+        cand.sort(key=lambda t: t[3], reverse=True)
+        side, origin, extreme, _rng = cand[0]
+        end_i = i
+        knowable = i
+        touched = None
+        abandoned_at = None
+        for j in range(knowable + 1, last + 1):
+            if side == "long":
+                zone = extreme - pct * (extreme - origin)
+                if l[j] <= zone <= h[j]:
+                    touched = j
+                    break
+                if c[j] < origin:
+                    abandoned_at = j
+                    break
+            else:
+                zone = extreme + pct * (origin - extreme)
+                if l[j] <= zone <= h[j]:
+                    touched = j
+                    break
+                if c[j] > origin:
+                    abandoned_at = j
+                    break
+        if touched is None:
+            i = (abandoned_at + 1) if abandoned_at is not None else last + 1
+            continue
+        rows.append(_score(side, origin, extreme, touched))
+        i = touched + 1
+    return pd.DataFrame(rows)
+
+
+def daily_bars(df: pd.DataFrame) -> pd.DataFrame:
+    """UTC daily OHLC from finer bars. Public for hypothesis notebooks."""
+    return _daily(df)
+
+
+# Unnamed-key catalog for this ask family. YAML freezes one row each. Notebook does not invent rivals.
+ATR_COMPLETE_RIVALS = (
+    {"atr_n": 14, "complete": "day_range"},
+    {"atr_n": 20, "complete": "day_range"},
+    {"atr_n": 14, "complete": "from_open"},
+    {"atr_n": 20, "complete": "from_open"},
+)
+
+
+def atr_path_days(df: pd.DataFrame, *, atr_n: int) -> pd.DataFrame:
+    """Daily OHLC + range + from_open + ATR + prior_atr. No month cut. Not pnl."""
+    d = _daily(df).copy()
+    d["day_range"] = d.high - d.low
+    d["from_open"] = np.maximum(d.high - d.open, d.open - d.low)
+    d["atr"] = _atr_daily(d, int(atr_n))
+    d["prior_atr"] = d["atr"].shift(1)
+    return d
+
+
+def atr_complete_table(
+    df: pd.DataFrame,
+    *,
+    atr_n: int,
+    complete: str = "day_range",
+    window: str = "last_calendar_month",
+) -> pd.DataFrame:
+    """Prior-day ATR complete flags. Knowable-at: prior_atr uses shift(1). Not pnl."""
+    d2 = atr_path_days(df, atr_n=atr_n).dropna(subset=["prior_atr"]).copy()
+    if d2.empty:
+        return d2
+    last = d2.index.max()
+    if window == "last_calendar_month":
+        month_start = pd.Timestamp(year=int(last.year), month=int(last.month), day=1, tz="UTC")
+        d2 = d2[d2.index >= month_start].copy()
+    complete_def = complete if complete in ("from_open", "day_range") else "day_range"
+    if complete_def == "from_open":
+        d2["excursion"] = d2["from_open"]
+    else:
+        d2["excursion"] = d2["day_range"]
+    d2["complete"] = d2["excursion"] >= d2["prior_atr"]
+    d2["range_over_atr"] = d2["excursion"] / d2["prior_atr"].replace(0, np.nan)
+    d2["atr_n"] = int(atr_n)
+    d2["complete_def"] = complete_def
+    return d2
+
+
+def atr_complete_summary(table: pd.DataFrame) -> dict[str, Any]:
+    """One rival's rates. Same keys the run folder writes (minus identity)."""
+    nn = int(len(table))
+    k = int(table["complete"].sum()) if nn and "complete" in table.columns else 0
+    rate = (k / nn) if nn else None
+    complete_def = None
+    atr_n = None
+    if nn:
+        if "complete_def" in table.columns:
+            complete_def = str(table["complete_def"].iloc[0])
+        if "atr_n" in table.columns:
+            atr_n = int(table["atr_n"].iloc[0])
+    return {
+        "n": nn,
+        "n_days": nn,
+        "n_complete": k,
+        "complete_rate": None if rate is None else round(float(rate), 4),
+        "complete_rate_ci95": ci
