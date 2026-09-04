@@ -1,0 +1,45 @@
+str = "discovery") -> Path:
+    spec = load_spec(spec_path)
+    if spec.get("kind") != "question":
+        raise AskError("ask rejects strategy specs")
+    blob = " ".join(str(spec.get(k) or "") for k in ("title", "hypothesis", "id", "english")).lower()
+    return_needles = (
+        "what is the return",
+        "pnl",
+        "drawdown",
+        "expectancy",
+        "edge after costs",
+        "1:1 r",
+        "1:1r",
+    )
+    if any(n in blob for n in return_needles):
+        raise AskError("ask refuses a return question with no strategy spec")
+    root = root or repo_root()
+    try:
+        series = load_from_spec(spec, root=root, network=network)
+    except Exception as e:
+        raise AskError(f"data load failed: {e}") from e
+    el = evaluate(series.n_bars)
+    if not el.ask_ok:
+        raise AskError(el.refuse_message("ask"))
+    metrics, table = measure(spec, series)
+    metrics = _strip_pnl(metrics)
+    metrics["identity"] = series.identity
+    metrics["n_bars"] = series.n_bars
+    folder = runs_dir(root) / f"{_utc_stamp()}-{spec['id']}-{_short_hash(spec['id'])}"
+    folder.mkdir(parents=True, exist_ok=True)
+    dump_yaml(spec, folder / "spec.yaml")
+    meta = {"kind": "question", "stage": stage, "execution_ready": False, "spec_id": spec["id"], "actual_start": series.actual_start, "actual_end": series.actual_end, "n_bars": series.n_bars, "provider": series.provider, "source": series.source, "symbol": series.symbol, "timeframe": series.timeframe, "exchange": series.exchange, "thin": el.thin}
+    (folder / "meta.json").write_text(json.dumps(meta, indent=2) + "\n")
+    (folder / "metrics.json").write_text(json.dumps(metrics, indent=2) + "\n")
+    if table is not None and len(table):
+        table.to_csv(folder / "table.csv", index=False)
+    else:
+        pd.DataFrame([{"n": metrics.get("n") or metrics.get("n_days") or 0}]).to_csv(folder / "table.csv", index=False)
+    (folder / "engine.log").write_text("ask pandas. no pnl. no trades.\n")
+    (folder / "status.json").write_text(json.dumps({"ok": True, "kind": "question"}, indent=2) + "\n")
+    if (folder / "trades.csv").exists():
+        (folder / "trades.csv").unlink()
+    from themis.report import write_report
+    write_report(folder, root=root)
+    return folder
