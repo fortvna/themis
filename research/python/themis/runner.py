@@ -10,6 +10,7 @@ import pandas as pd
 
 from themis.data import SeriesLoad, load_from_spec
 from themis.eligibility import evaluate
+from themis.fees import fee_schedule
 from themis.fill import simulate_exit
 from themis.implements import ImplementsError, load_implements
 from themis.metrics import equity_on_bars, slip_price, strategy_metrics
@@ -28,6 +29,11 @@ def _trades_from_implements(spec: dict[str, Any], df: pd.DataFrame, *, root: Pat
     except ImplementsError as e:
         raise RunError(str(e)) from e
     costs = spec.get("costs") or {}
+    if costs.get("commission_per_side") is None:
+        fill = (spec.get("rules") or {}).get("fill") or "next_open"
+        law = fee_schedule(symbol, fill=fill)
+        costs = {**law, **costs}
+        costs["commission_per_side"] = law["commission_per_side"]
     commission = float(costs.get("commission_per_side") or 0)
     slip = slip_price(symbol, costs)
     try:
@@ -67,8 +73,15 @@ def run_strategy(spec_path: str | Path, *, root: Path | None = None, network: bo
     spec = load_spec(spec_path)
     if spec.get("kind") != "strategy":
         raise RunError("run refuses a question spec")
+    inst = spec.get("instrument") or {}
     costs = spec.get("costs") or {}
-    if not costs:
+    if costs.get("commission_per_side") is None:
+        fill = (spec.get("rules") or {}).get("fill") or "next_open"
+        law = fee_schedule(inst.get("symbol"), fill=fill)
+        costs = {**law, **costs}
+        costs["commission_per_side"] = law["commission_per_side"]
+        spec["costs"] = costs
+    if costs.get("commission_per_side") is None:
         raise RunError("no costs, no strategy run")
     root = root or repo_root()
     series = load_from_spec(spec, root=root, network=network)
@@ -115,9 +128,9 @@ def run_strategy(spec_path: str | Path, *, root: Path | None = None, network: bo
             "kept": False,
             "execution_ready": False,
             "note": (
-                "placeholder costs. not a live claim. "
+                "Binance Regular table costs via themis.fees. not a live claim. "
                 "same-bar stop+target tagged ambiguous and filled at stop. "
-                "gap through a level fills at open. intra-bar path not modeled."
+                "gap through a level fills at open. intra-bar path not modeled. no funding."
             ),
             "identity": series.identity,
             "implements": spec.get("implements"),
