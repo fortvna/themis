@@ -184,6 +184,190 @@ def _atr_daily(d: pd.DataFrame, n: int) -> pd.Series:
     return tr.rolling(n).mean()
 
 
+def _spec_field(spec: dict[str, Any], key: str, default: Any = None) -> Any:
+    if spec.get(key) is not None:
+        return spec[key]
+    for c in spec.get("condition") or []:
+        if isinstance(c, dict) and c.get(key) is not None:
+            return c[key]
+    return default
+
+
+def bounce_retrace_events(
+    df: pd.DataFrame,
+    *,
+    impulse_bars: int,
+    impulse_atr: float,
+    retrace_pct: float,
+    bounce: str,
+    atr_n: int = 14,
+    horizon_bars: int | None = None,
+) -> pd.DataFrame:
+    """N-bar K-ATR impulse, retrace_pct zone touch, bounce flag. Not pnl.
+
+    Impulse (open-spec is silent beyond "N-bar move of K ATR"; this is the
+    cases.py R1 reading): a window of exactly N closed bars whose last bar is
+    the window extreme, origin is the opposite extreme earlier in the window,
+    and (extreme-origin) >= K * ATR. ATR is SMA of true range on this
+    timeframe, length atr_n (default 14), knowable at the bar before the
+    impulse completes (atr[end-1]) — no look-ahead.
+
+    Zone: retrace_pct of that frozen impulse range. Touch is the first closed
+    bar after the impulse is knowable whose range intersects the zone.
+    Close through origin before touch abandons the impulse (not an event).
+
+    Bounce is an outcome after touch, not an entry:
+      through_50 — close back through the midpoint of origin and extreme
+      atr — favorable excursion of 1*ATR from the zone, ATR knowable at touch
+    Horizon, if set, caps bars after touch (inclusive of the touch bar as 0).
+    Same-bar close through origin is invalidation (pessimistic, no bounce).
+    """
+    n = int(impulse_bars)
+    k = float(impulse_atr)
+    pct = float(retrace_pct)
+    how = str(bounce)
+    if n < 2:
+        raise AskError("impulse_bars must be >= 2")
+    if k <= 0:
+        raise AskError("impulse_atr must be > 0")
+    if not (0 < pct < 1):
+        raise AskError("retrace_pct must be in (0, 1)")
+    if how not in ("through_50", "atr"):
+        raise AskError("bounce must be through_50 or atr")
+    if df is None or len(df) < n + int(atr_n) + 2:
+        return pd.DataFrame()
+
+    h = df["high"].to_numpy(dtype=float)
+    l = df["low"].to_numpy(dtype=float)
+    c = df["close"].to_numpy(dtype=float)
+    atr = _atr_daily(df, int(atr_n)).to_numpy(dtype=float)
+    rows: list[dict[str, Any]] = []
+    i = max(n - 1, int(atr_n))
+    last = len(df) - 1
+
+    def _score(side: str, origin: float, extreme: float, touch: int) -> dict[str, Any]:
+        rng = abs(extreme - origin)
+        if side == "long":
+            zone = extreme - pct * rng
+        else:
+            zone = extreme + pct * rng
+        mid = (origin + extreme) / 2.0
+        atr_touch = atr[touch] if np.isfinite(atr[touch]) else atr[touch - 1] if touch else np.nan
+        if not np.isfinite(atr_touch) or atr_touch <= 0:
+            atr_touch = atr[touch - 1] if touch else np.nan
+        stop = last
+        if horizon_bars is not None:
+            stop = min(last, touch + int(horizon_bars))
+        bounced = False
+        invalidated = False
+        mae = mfe = 0.0
+        entry = float(c[touch])
+        for kbar in range(touch, stop + 1):
+            if side == "long":
+                mae = max(mae, entry - float(l[kbar]))
+                mfe = max(mfe, float(h[kbar]) - entry)
+                if float(c[kbar]) < origin:
+                    invalidated = True
+                    break
+                if how == "through_50":
+                    if float(c[kbar]) > mid:
+                        bounced = True
+                        break
+                elif np.isfinite(atr_touch) and (float(h[kbar]) - zone) >= atr_touch:
+                    bounced = True
+                    break
+            else:
+                mae = max(mae, float(h[kbar]) - entry)
+                mfe = max(mfe, entry - float(l[kbar]))
+                if float(c[kbar]) > origin:
+                    invalidated = True
+                    break
+                if how == "through_50":
+                    if float(c[kbar]) < mid:
+                        bounced = True
+                        break
+                elif np.isfinite(atr_touch) and (zone - float(l[kbar])) >= atr_touch:
+                    bounced = True
+                    break
+        return {
+            "side": side,
+            "impulse_end_ts": str(df.index[end_i]),
+            "touch_ts": str(df.index[touch]),
+            "bounced": bool(bounced),
+            "invalidated": bool(invalidated),
+            "stop_first": bool(invalidated),
+            "target_first": bool(bounced),
+            "open_end": bool(not bounced and not invalidated),
+            "mae": mae,
+            "mfe": mfe,
+            "origin": origin,
+            "extreme": extreme,
+            "zone": zone,
+        }
+
+    while i <= last:
+        atr_ref = atr[i - 1] if i else np.nan
+        if not np.isfinite(atr_ref) or atr_ref <= 0:
+            i += 1
+            continue
+        start = i - n + 1
+        if start < 0:
+            i += 1
+            continue
+        win_h = h[start : i + 1]
+        win_l = l[start : i + 1]
+        thresh = k * float(atr_ref)
+        cand: list[tuple[str, float, float, float]] = []
+        if len(win_h) >= 2 and win_h[-1] >= win_h[:-1].max():
+            rel_lo = int(np.argmin(win_l))
+            if rel_lo < n - 1:
+                origin_px = float(win_l[rel_lo])
+                extreme_px = float(win_h[-1])
+                rng = extreme_px - origin_px
+                if rng > 0 and rng >= thresh:
+                    cand.append(("long", origin_px, extreme_px, rng))
+        if len(win_l) >= 2 and win_l[-1] <= win_l[:-1].min():
+            rel_hi = int(np.argmax(win_h))
+            if rel_hi < n - 1:
+                origin_px = float(win_h[rel_hi])
+                extreme_px = float(win_l[-1])
+                rng = origin_px - extreme_px
+                if rng > 0 and rng >= thresh:
+                    cand.append(("short", origin_px, extreme_px, rng))
+        if not cand:
+            i += 1
+            continue
+        cand.sort(key=lambda t: t[3], reverse=True)
+        side, origin, extreme, _rng = cand[0]
+        end_i = i
+        knowable = i
+        touched = None
+        abandoned_at = None
+        for j in range(knowable + 1, last + 1):
+            if side == "long":
+                zone = extreme - pct * (extreme - origin)
+                if l[j] <= zone <= h[j]:
+                    touched = j
+                    break
+                if c[j] < origin:
+                    abandoned_at = j
+                    break
+            else:
+                zone = extreme + pct * (origin - extreme)
+                if l[j] <= zone <= h[j]:
+                    touched = j
+                    break
+                if c[j] > origin:
+                    abandoned_at = j
+                    break
+        if touched is None:
+            i = (abandoned_at + 1) if abandoned_at is not None else last + 1
+            continue
+        rows.append(_score(side, origin, extreme, touched))
+        i = touched + 1
+    return pd.DataFrame(rows)
+
+
 def daily_bars(df: pd.DataFrame) -> pd.DataFrame:
     """UTC daily OHLC from finer bars. Public for hypothesis notebooks."""
     return _daily(df)
@@ -324,26 +508,48 @@ def measure(spec: dict[str, Any], series: SeriesLoad) -> tuple[dict[str, Any], p
         return _strip_pnl(metrics), table
 
     if kind in ("bounce_retrace", "reaction_horizon") or extra.get("question_ref") in ("R1", "R2", "R3"):
-        n = int(extra.get("impulse_bars") or 12)
-        pct = float(extra.get("retrace_pct") or 0.75)
-        ev = swing_retrace_events(df, max(3, n // 4), pct, pct)
+        pct_raw = _spec_field(extra, "retrace_pct")
+        if pct_raw is None:
+            raise AskError("bounce_retrace requires retrace_pct; no silent default")
+        n_imp = int(_spec_field(extra, "impulse_bars", 12))
+        k_atr = float(_spec_field(extra, "impulse_atr", 1.5))
+        bounce_how = str(_spec_field(extra, "bounce", "through_50"))
+        n_atr = int(_spec_field(extra, "atr_n", 14))
+        pct = float(pct_raw)
         horizon = extra.get("horizon_bars")
+        if horizon is None:
+            horizon = _spec_field(extra, "horizon_bars")
+        ev = bounce_retrace_events(
+            df,
+            impulse_bars=n_imp,
+            impulse_atr=k_atr,
+            retrace_pct=pct,
+            bounce=bounce_how,
+            atr_n=n_atr,
+            horizon_bars=int(horizon) if horizon is not None else None,
+        )
         table = ev
         nn = int(len(ev))
-        bounce = float(ev["target_first"].mean()) if nn else None
+        bounce = float(ev["bounced"].mean()) if nn else None
         metrics.update({
             "n": nn,
             "bounce_rate": round(bounce, 4) if bounce is not None else None,
             "bounce_rate_ci95": ci95(bounce, nn) if bounce is not None else None,
+            "impulse_bars": n_imp,
+            "impulse_atr": k_atr,
+            "bounce": bounce_how,
+            "retrace_pct": pct,
+            "atr_n": n_atr,
             "note": "bounce/path is an outcome. not an entry. not pnl.",
         })
         if extra.get("want_mae_mfe") and nn:
             metrics["median_mae"] = round(float(ev["mae"].median()), 4)
             metrics["median_mfe"] = round(float(ev["mfe"].median()), 4)
-        if horizon and nn:
+        if horizon is not None:
             metrics["horizon_bars"] = int(horizon)
-            metrics["p_reaction"] = metrics["bounce_rate"]
-            metrics["p_invalidated"] = round(float(ev["stop_first"].mean()), 4)
+            if nn:
+                metrics["p_reaction"] = metrics["bounce_rate"]
+                metrics["p_invalidated"] = round(float(ev["stop_first"].mean()), 4)
         return _strip_pnl(metrics), table
 
     if kind in ("session_range", "session_clock") or extra.get("windows_utc"):
