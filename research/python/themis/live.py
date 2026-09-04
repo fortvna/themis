@@ -10,6 +10,7 @@ import yaml
 
 from themis import auth
 from themis import named as named_fields
+from themis.fees import fee_schedule
 from themis.metrics import tick_size
 from themis.paths import jobs_dir, questions_dir, repo_root, specs_dir
 from themis.spec import dump_yaml
@@ -40,7 +41,7 @@ Rules:
 - Rival definitions for swing highs/lows: fractal n (at least two n values). For ATR: length 14 vs 20.
 - Swing at bar i with fractal n is knowable at i+n. Fill next_open. No lookahead. No forming-bar signals.
 - Question measure: swing_retrace. Outcome: target_first vs stop_first (path stats, not pnl).
-- Strategy: costs placeholder with a written reason (commission_per_side 0.0004 is a placeholder, not a live claim). Zero only as 0 plus a reason.
+- Strategy: costs are the Binance Regular / VIP0 table (themis.fees), not a placeholder. next_open fills use taker both sides. Zero only as 0 plus a reason. No funding.
 - run_eligible, walkforward_eligible, tune_eligible default false (floors come from loaded bars, not from you).
 - execution_ready is false. Do not claim kept.
 - Include questions[] and strategies[] as full spec mappings plus plan[].
@@ -252,13 +253,6 @@ def _compile_live(
         })
         s.setdefault("discovery", {"start": None, "end": None, "note": "use all loaded bars"})
         s.setdefault("holdout", {"start": None, "end": None, "note": "holdout null until bars lock a tail"})
-        s.setdefault("costs", {
-            "commission_per_side": 0.0004,
-            "slippage_ticks": 1,
-            "tick_size": tick_size(series.get("symbol"), {}),
-            "cost_unit": "fraction_of_price",
-            "notes": "Placeholder. Binance USD-M taker-ish. No funding. Not a live claim.",
-        })
         s.setdefault("rules", {
             "fill": "next_open",
             "entry": "next open after closed-bar 61.8 percent retrace touch, swing knowable",
@@ -266,12 +260,21 @@ def _compile_live(
             "target": "swing extreme (the high for longs, the low for shorts)",
             "calc_on_closed_bar": True,
         })
+        fill = (s.get("rules") or {}).get("fill") or "next_open"
+        existing = dict(s.get("costs") or {})
+        # Python is the law: overlay fee table even if the model wrote a placeholder.
+        law = fee_schedule(series["symbol"], fill=fill)
+        s["costs"] = {
+            **law,
+            "slippage_ticks": existing.get("slippage_ticks", 1),
+            "tick_size": existing.get("tick_size") if existing.get("tick_size") is not None else tick_size(series.get("symbol"), existing),
+        }
         s.setdefault("forbidden", ["forming_bar_signals", "same_bar_fill", "future_pivots"])
         s.setdefault("kill", {"min_trades": 30, "max_drawdown_pct": 40, "min_net_return": 0})
         s.setdefault("search_space", {})
-        s.setdefault("run_eligible", False)
-        s.setdefault("walkforward_eligible", False)
-        s.setdefault("tune_eligible", False)
+        s.setdefault("run_eligible": False)
+        s.setdefault("walkforward_eligible": False)
+        s.setdefault("tune_eligible": False)
     for q in qs:
         _lift_engine_fields(q)
     for s in ss:
