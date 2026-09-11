@@ -1,6 +1,7 @@
 """Locate the Themis repo and research tree."""
 from __future__ import annotations
 
+import hashlib
 import os
 from pathlib import Path
 
@@ -50,3 +51,8 @@ def python_dir(root: Path | None = None) -> Path:
 
 def ideas_dir(root: Path | None = None) -> Path:
     return research_dir(root) / "ideas"
+
+
+def short_hash(spec_id: str) -> str:
+    """Stable 8-char id for `runs/<utc>-<spec-id>-<short-hash>/`."""
+    return hashlib.sha1(str(spec_id).encode("utf-8")).hexdigest()[:8]

@@ -21,6 +21,9 @@ def simulate_exit(
     n = len(opens)
     if entry_i < 0 or entry_i >= n:
         return None
+    side = (side or "").strip().lower()
+    if side not in ("long", "short"):
+        return None
     raw_entry = float(opens[entry_i])
     if side == "long":
         entry = raw_entry + slip

@@ -9,6 +9,7 @@ import pandas as pd
 
 NOT_MODELED = [
     "perp funding",
+    "intra-bar path",
     "intra-bar stop/target path",
 ]
 
@@ -312,6 +313,11 @@ def strategy_metrics(
             "tick_size": tick_size(symbol, costs),
             "slip_price": slip_price(symbol, costs),
         }
+
+    for k in MUST:
+        if k in out and out[k] is not None:
+            continue
+        not_computed.setdefault(k, "not produced")
 
     out["not_computed"] = not_computed
     out["not_modeled"] = list(NOT_MODELED)

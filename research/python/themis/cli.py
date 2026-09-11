@@ -9,8 +9,11 @@ from typing import Any
 from themis import auth
 from themis.ask import AskError, run_ask
 from themis.compiler import CompileError, compile_bank, compile_english
+from themis.data import DataError
+from themis.fees import FeeError
 from themis.ideas import IdeaError, list_ideas, run_idea_loop, show_idea
 from themis.runner import RunError, compare, fetch, report, run_strategy, tune, validate, walkforward
+from themis.spec import SpecError
 
 
 def _series(args: argparse.Namespace) -> dict[str, str]:
@@ -264,6 +267,6 @@ def main(argv: list[str] | None = None) -> int:
             _print(out)
             return 0
         return 2
-    except (CompileError, AskError, RunError, IdeaError, auth.AuthError) as e:
+    except (CompileError, AskError, RunError, IdeaError, auth.AuthError, SpecError, DataError, FeeError) as e:
         print(str(e), file=sys.stderr)
         return 1

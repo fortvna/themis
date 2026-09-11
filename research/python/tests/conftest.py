@@ -61,8 +61,10 @@ def thin_gold_csv() -> Path:
 
 @pytest.fixture(scope="session")
 def btc_csv() -> Path:
-    df = synth_bars(5000, start="2022-01-01", px=20000.0)
     dest = FIX / "BTCUSDT" / "4h.csv"
+    if dest.exists() and dest.stat().st_size > 0:
+        return dest
+    df = synth_bars(5000, start="2022-01-01", px=20000.0)
     _write_ohlc(dest, df)
     return dest
 

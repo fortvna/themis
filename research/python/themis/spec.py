@@ -109,6 +109,16 @@ def validate_strategy(spec: dict[str, Any]) -> dict[str, Any]:
     costs = spec.get("costs")
     if not isinstance(costs, dict) or not costs:
         raise SpecError("strategy costs must be written (zero only as 0 plus a reason)")
+    cps = costs.get("commission_per_side")
+    if cps is not None:
+        try:
+            zero = float(cps) == 0.0
+        except (TypeError, ValueError) as e:
+            raise SpecError("commission_per_side must be a number") from e
+        if zero:
+            reason = costs.get("reason") or costs.get("zero_reason") or costs.get("notes")
+            if not (isinstance(reason, str) and reason.strip()):
+                raise SpecError("zero commission only as 0 plus a reason")
     return spec
 
 

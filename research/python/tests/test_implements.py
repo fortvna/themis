@@ -56,6 +56,13 @@ class TestLoadImplements(unittest.TestCase):
         self.assertIn("disagree", str(ctx.exception).lower())
         self.assertIn("fractal_n", str(ctx.exception))
 
+    def test_missing_zone_is_disagreement_no_silent_618(self):
+        with self.assertRaises(ImplementsError) as ctx:
+            load_implements({"implements": "strategies/retrace_swing.py", "fractal_n": 5})
+        msg = str(ctx.exception).lower()
+        self.assertIn("disagree", msg)
+        self.assertIn("0.618", str(ctx.exception))
+
     def test_sma_stub_not_a_silent_retrace(self):
         spec = {
             "implements": "strategies/sma_cross.py",

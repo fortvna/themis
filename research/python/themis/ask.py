@@ -1,7 +1,6 @@
 """pandas ask. Writes run folders. Never pnl. Never trades.csv."""
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 from datetime import datetime, timezone
@@ -13,7 +12,7 @@ import pandas as pd
 
 from themis.data import SeriesLoad, load_from_spec
 from themis.eligibility import evaluate
-from themis.paths import repo_root, runs_dir
+from themis.paths import repo_root, runs_dir, short_hash
 from themis.spec import SpecError, dump_yaml, is_return_question, load_spec, PNL_KEYS
 
 PNL_FORBIDDEN = PNL_KEYS | {"trades", "trade_count", "expectancy", "edge"}
@@ -28,7 +27,7 @@ def _utc_stamp() -> str:
 
 
 def _short_hash(spec_id: str) -> str:
-    return hashlib.sha1(spec_id.encode()).hexdigest()[:8]
+    return short_hash(spec_id)
 
 
 def ci95(p: float, n: int) -> float | None:

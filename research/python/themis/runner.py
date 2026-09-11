@@ -6,15 +6,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
-from themis.data import SeriesLoad, load_from_spec
+from themis.data import DataError, SeriesLoad, load_from_spec
 from themis.eligibility import evaluate
-from themis.fees import fee_schedule
-from themis.fill import simulate_exit
+from themis.fees import FeeError, fee_schedule, resolve_costs
 from themis.implements import ImplementsError, load_implements
-from themis.metrics import equity_on_bars, slip_price, strategy_metrics
-from themis.paths import repo_root, runs_dir
+from themis.metrics import equity_on_bars, slip_price, strategy_metrics, tick_size
+from themis.paths import repo_root, runs_dir, short_hash
 from themis.report import write_report
 from themis.spec import SpecError, dump_yaml, load_spec
 
@@ -23,17 +23,28 @@ class RunError(RuntimeError):
     pass
 
 
+def _freeze_costs(spec: dict[str, Any], *, symbol: str | None = None) -> dict[str, Any]:
+    """Python freezes Binance Regular fees. YAML only records them. No silent 0.0004."""
+    inst = spec.get("instrument") or {}
+    sym = symbol or inst.get("symbol")
+    try:
+        costs = resolve_costs(spec, symbol=sym)
+    except FeeError as e:
+        raise RunError(f"no costs, no strategy run: {e}") from e
+    if costs.get("commission_per_side") is None:
+        raise RunError("no costs, no strategy run")
+    if costs.get("tick_size") is None:
+        costs["tick_size"] = tick_size(sym, costs)
+    spec["costs"] = costs
+    return costs
+
+
 def _trades_from_implements(spec: dict[str, Any], df: pd.DataFrame, *, root: Path, symbol: str) -> pd.DataFrame:
     try:
         mod = load_implements(spec, root=root)
     except ImplementsError as e:
         raise RunError(str(e)) from e
-    costs = spec.get("costs") or {}
-    if costs.get("commission_per_side") is None:
-        fill = (spec.get("rules") or {}).get("fill") or "next_open"
-        law = fee_schedule(symbol, fill=fill)
-        costs = {**law, **costs}
-        costs["commission_per_side"] = law["commission_per_side"]
+    costs = _freeze_costs(spec, symbol=symbol)
     commission = float(costs.get("commission_per_side") or 0)
     slip = slip_price(symbol, costs)
     try:
@@ -52,39 +63,54 @@ def _stamp() -> str:
 
 
 def fetch(spec_path: str | Path, *, root: Path | None = None, network: bool = True) -> SeriesLoad:
-    spec = load_spec(spec_path)
-    return load_from_spec(spec, root=root or repo_root(), network=network)
+    try:
+        spec = load_spec(spec_path)
+    except SpecError as e:
+        raise RunError(str(e)) from e
+    try:
+        return load_from_spec(spec, root=root or repo_root(), network=network)
+    except DataError as e:
+        raise RunError(str(e)) from e
+
+
+def _ask_folder_matches(folder_name: str, rid: str) -> bool:
+    """True when folder is `{stamp}-{spec-id}-{hash}` (or a dummy `*-{id}-*`)."""
+    token = f"-{rid}-"
+    return token in f"-{folder_name}-"
 
 
 def _require_ask_folders(spec: dict[str, Any], root: Path) -> None:
-    req = spec.get("requires_asks") or []
-    if not req:
-        return
+    req = spec.get("requires_asks")
+    if not isinstance(req, list) or not req:
+        raise RunError("requires_asks is empty; run needs the ask folders the compiler named")
     runs = runs_dir(root)
     if not runs.exists():
-        raise RunError(f"missing requires_asks folders: {req}")
-    names = [p.name for p in runs.iterdir() if p.is_dir()]
-    missing = [rid for rid in req if not any(rid in n for n in names)]
+        raise RunError(f"missing requires_asks folders: {list(req)}")
+    found: list[str] = []
+    for p in runs.iterdir():
+        if not p.is_dir():
+            continue
+        if (p / "metrics.json").exists() or (p / "meta.json").exists():
+            found.append(p.name)
+    missing = [str(rid) for rid in req if not any(_ask_folder_matches(n, str(rid)) for n in found)]
     if missing:
         raise RunError(f"missing requires_asks folders: {missing}")
 
 
 def run_strategy(spec_path: str | Path, *, root: Path | None = None, network: bool = True, thin: bool = False, stage: str = "discovery") -> Path:
-    spec = load_spec(spec_path)
+    try:
+        spec = load_spec(spec_path)
+    except SpecError as e:
+        raise RunError(str(e)) from e
     if spec.get("kind") != "strategy":
         raise RunError("run refuses a question spec")
     inst = spec.get("instrument") or {}
-    costs = spec.get("costs") or {}
-    if costs.get("commission_per_side") is None:
-        fill = (spec.get("rules") or {}).get("fill") or "next_open"
-        law = fee_schedule(inst.get("symbol"), fill=fill)
-        costs = {**law, **costs}
-        costs["commission_per_side"] = law["commission_per_side"]
-        spec["costs"] = costs
-    if costs.get("commission_per_side") is None:
-        raise RunError("no costs, no strategy run")
+    costs = _freeze_costs(spec, symbol=inst.get("symbol"))
     root = root or repo_root()
-    series = load_from_spec(spec, root=root, network=network)
+    try:
+        series = load_from_spec(spec, root=root, network=network)
+    except DataError as e:
+        raise RunError(str(e)) from e
     el = evaluate(series.n_bars, costs_written=True, search_space=spec.get("search_space") or None)
     if not el.run_ok:
         raise RunError(el.refuse_message("run"))
@@ -136,7 +162,7 @@ def run_strategy(spec_path: str | Path, *, root: Path | None = None, network: bo
             "implements": spec.get("implements"),
         }
     )
-    folder = runs_dir(root) / f"{_stamp()}-{spec['id']}-{spec['id'][-8:] if len(spec['id'])>=8 else spec['id']}"
+    folder = runs_dir(root) / f"{_stamp()}-{spec['id']}-{short_hash(spec['id'])}"
     folder.mkdir(parents=True, exist_ok=True)
     dump_yaml(spec, folder / "spec.yaml")
     meta = {
@@ -165,9 +191,19 @@ def run_strategy(spec_path: str | Path, *, root: Path | None = None, network: bo
         pd.DataFrame(
             columns=["side", "entry_ts", "exit_ts", "entry", "exit", "pnl", "why", "ambiguous", "gap"]
         ).to_csv(folder / "trades.csv", index=False)
-    eq_df = pd.DataFrame({"ts": series.df.index.astype(str), "equity": equity})
-    peak = eq_df["equity"].cummax().replace(0, pd.NA)
-    eq_df["drawdown_pct"] = ((peak - eq_df["equity"]) / peak * 100.0).fillna(0.0)
+    e0f = float(e0)
+    peak = np.maximum.accumulate(np.concatenate(([e0f], np.asarray(equity, dtype=float))))[1:]
+    with np.errstate(divide="ignore", invalid="ignore"):
+        dd = np.where(peak > 0, (peak - equity) / peak * 100.0, 0.0)
+    dd = np.nan_to_num(dd, nan=0.0, posinf=0.0, neginf=0.0)
+    eq_df = pd.DataFrame(
+        {
+            "bar_i": np.arange(len(series.df), dtype=int),
+            "ts": series.df.index.astype(str),
+            "equity": np.asarray(equity, dtype=float),
+            "drawdown_pct": dd,
+        }
+    )
     eq_df.to_csv(folder / "equity.csv", index=False)
     (folder / "engine.log").write_text(
         f"run implements={spec.get('implements')}. shared fill + metrics. "
@@ -179,9 +215,15 @@ def run_strategy(spec_path: str | Path, *, root: Path | None = None, network: bo
 
 
 def validate(spec_path: str | Path, from_run: str | Path, *, root: Path | None = None, network: bool = True) -> Path:
-    spec = load_spec(spec_path)
+    try:
+        spec = load_spec(spec_path)
+    except SpecError as e:
+        raise RunError(str(e)) from e
     root = root or repo_root()
-    series = load_from_spec(spec, root=root, network=network)
+    try:
+        series = load_from_spec(spec, root=root, network=network)
+    except DataError as e:
+        raise RunError(str(e)) from e
     hold = spec.get("holdout") or {}
     hold_n = 0
     if hold.get("start") and hold.get("end"):
@@ -195,9 +237,15 @@ def validate(spec_path: str | Path, from_run: str | Path, *, root: Path | None =
 
 
 def walkforward(spec_path: str | Path, *, root: Path | None = None, network: bool = True, n_folds: int = 3) -> Path:
-    spec = load_spec(spec_path)
+    try:
+        spec = load_spec(spec_path)
+    except SpecError as e:
+        raise RunError(str(e)) from e
     root = root or repo_root()
-    series = load_from_spec(spec, root=root, network=network)
+    try:
+        series = load_from_spec(spec, root=root, network=network)
+    except DataError as e:
+        raise RunError(str(e)) from e
     el = evaluate(series.n_bars, costs_written=True, n_folds=n_folds, search_space=spec.get("search_space"))
     if not el.walkforward_ok:
         raise RunError(el.refuse_message("walkforward"))
@@ -220,10 +268,16 @@ def walkforward(spec_path: str | Path, *, root: Path | None = None, network: boo
 
 
 def tune(spec_path: str | Path, *, root: Path | None = None, network: bool = True) -> Path:
-    spec = load_spec(spec_path)
+    try:
+        spec = load_spec(spec_path)
+    except SpecError as e:
+        raise RunError(str(e)) from e
     space = spec.get("search_space") or {}
     root = root or repo_root()
-    series = load_from_spec(spec, root=root, network=network)
+    try:
+        series = load_from_spec(spec, root=root, network=network)
+    except DataError as e:
+        raise RunError(str(e)) from e
     el = evaluate(series.n_bars, costs_written=True, search_space=space or None)
     if not el.walkforward_ok or not el.tune_ok:
         msg = el.refuse_message("tune")

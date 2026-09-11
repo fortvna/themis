@@ -52,4 +52,15 @@ def load_implements(spec: dict[str, Any], *, root: Path | None = None) -> Module
             f"YAML and implements disagree: {spec.get('implements')} requires {missing}. "
             "Do not default a retrace. Freeze the numbers in the spec."
         )
+    validate = getattr(mod, "validate_spec", None)
+    if callable(validate):
+        try:
+            validate(spec)
+        except ImplementsError:
+            raise
+        except Exception as e:
+            raise ImplementsError(
+                f"YAML and implements disagree: {spec.get('implements')}: {e}. "
+                "Do not default a retrace. Freeze the numbers in the spec."
+            ) from e
     return mod

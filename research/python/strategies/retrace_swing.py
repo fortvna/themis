@@ -17,6 +17,11 @@ class RetraceSpecError(ValueError):
     pass
 
 
+def validate_spec(spec: dict[str, Any]) -> tuple[int, float, float]:
+    """Fail at load if YAML omitted the zone. No silent 0.618."""
+    return zone_from_spec(spec)
+
+
 def zone_from_spec(spec: dict[str, Any]) -> tuple[int, float, float]:
     n = spec.get("fractal_n")
     if n is None:

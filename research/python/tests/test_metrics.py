@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 
 from themis.metrics import (
+    MUST,
     equity_on_bars,
     max_drawdown_pct,
     periods_per_year,
@@ -95,6 +96,71 @@ class TestFills(unittest.TestCase):
         self.assertTrue(row["ambiguous"])
         self.assertEqual(row["exit_level"], 90.0)
         self.assertLess(row["pnl"], 0)
+
+    def test_short_same_bar_fills_stop(self):
+        df = _bars([(100, 120, 80, 100)])
+        row = simulate_exit(
+            "short",
+            0,
+            110,
+            90,
+            df.open.to_numpy(),
+            df.high.to_numpy(),
+            df.low.to_numpy(),
+            df.close.to_numpy(),
+        )
+        assert row is not None
+        self.assertEqual(row["why"], "ambiguous_same_bar")
+        self.assertTrue(row["ambiguous"])
+        self.assertEqual(row["exit_level"], 110.0)
+        self.assertLess(row["pnl"], 0)
+
+    def test_gap_through_target_fills_at_open(self):
+        df = _bars(
+            [
+                (100, 101, 99, 100),
+                (100, 101, 99, 100),
+                (120, 121, 119, 120),
+            ]
+        )
+        row = simulate_exit(
+            "long",
+            1,
+            90,
+            110,
+            df.open.to_numpy(),
+            df.high.to_numpy(),
+            df.low.to_numpy(),
+            df.close.to_numpy(),
+        )
+        assert row is not None
+        self.assertEqual(row["why"], "target_gap")
+        self.assertTrue(row["gap"])
+        self.assertEqual(row["exit_i"], 2)
+        self.assertEqual(row["exit_level"], 120.0)
+
+    def test_short_gap_through_stop_fills_at_open(self):
+        df = _bars(
+            [
+                (100, 101, 99, 100),
+                (100, 101, 99, 100),
+                (115, 116, 114, 115),
+            ]
+        )
+        row = simulate_exit(
+            "short",
+            1,
+            110,
+            90,
+            df.open.to_numpy(),
+            df.high.to_numpy(),
+            df.low.to_numpy(),
+            df.close.to_numpy(),
+        )
+        assert row is not None
+        self.assertEqual(row["why"], "stop_gap")
+        self.assertTrue(row["gap"])
+        self.assertEqual(row["exit_level"], 115.0)
 
     def test_slippage_is_adverse_on_entry_and_exit(self):
         df = _bars(
@@ -183,6 +249,13 @@ class TestEquityAndRatios(unittest.TestCase):
         self.assertEqual(m["notional"], "1_unit")
         self.assertEqual(m["pnl_unit"], "price")
         self.assertIn("perp funding", m["not_modeled"])
+        self.assertTrue(
+            any("intra-bar" in x for x in m["not_modeled"]),
+            m["not_modeled"],
+        )
+        for key in MUST:
+            self.assertTrue(key in m or key in m["not_computed"], key)
+        self.assertIsInstance(m["not_computed"], dict)
 
     def test_zero_dd_calmar_is_not_computed(self):
         idx = pd.date_range("2026-01-01", periods=400, freq="4h", tz="UTC")
@@ -268,8 +341,15 @@ class TestRunWritesCanon(unittest.TestCase):
             folder = run_strategy(root / st["yaml"], root=root, network=False, thin=False)
             metrics = json.loads((folder / "metrics.json").read_text())
             self.assertTrue((folder / "equity.csv").exists())
+            self.assertTrue((folder / "trades.csv").exists())
             eq = pd.read_csv(folder / "equity.csv")
             self.assertEqual(len(eq), n)
+            self.assertIn("bar_i", eq.columns)
+            self.assertEqual(int(eq["bar_i"].iloc[0]), 0)
+            self.assertEqual(int(eq["bar_i"].iloc[-1]), n - 1)
+            import hashlib
+            want = hashlib.sha1(st["id"].encode()).hexdigest()[:8]
+            self.assertTrue(folder.name.endswith(want), folder.name)
             nc = metrics.get("not_computed") or {}
             self.assertIsInstance(nc, dict)
             for key in (
@@ -291,6 +371,12 @@ class TestRunWritesCanon(unittest.TestCase):
             self.assertIn("n_ambiguous", metrics)
             self.assertFalse(metrics["execution_ready"])
             self.assertIn("kill_pass", metrics)
+            self.assertIn("perp funding", metrics.get("not_modeled") or [])
+            self.assertEqual(metrics.get("same_bar_policy"), "ambiguous_tagged_fill_stop")
+            self.assertEqual(metrics.get("gap_policy"), "fill_at_open")
+            from themis.spec import load_yaml
+            frozen = load_yaml(folder / "spec.yaml")
+            self.assertIsNotNone(frozen["costs"].get("commission_per_side"))
 
 
 if __name__ == "__main__":
