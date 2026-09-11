@@ -1,0 +1,25 @@
+{
+  "kind": "question",
+  "spec_id": "g3-atr20-through-btc-4h-v1",
+  "n_days": 1684,
+  "n_touch_plus33": 883,
+  "n_touch_minus33": 882,
+  "react_plus": 0.5198,
+  "react_minus": 0.5374,
+  "react_plus_ci95": 0.033,
+  "react_minus_ci95": 0.0329,
+  "atr_n": 20,
+  "react": "through",
+  "note": "condition knowable at prior daily close. not a trade.",
+  "identity": {
+    "provider": "binance",
+    "symbol": "BTCUSDT",
+    "exchange": "binanceusdm",
+    "timeframe": "4h",
+    "source": "csv",
+    "row_count": 10224,
+    "actual_start": "2022-01-01 00:00:00+00:00",
+    "actual_end": "2026-08-31 20:00:00+00:00"
+  },
+  "n_bars": 10224
+}

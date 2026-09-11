@@ -1,0 +1,15 @@
+{
+  "kind": "question",
+  "stage": "discovery",
+  "execution_ready": false,
+  "spec_id": "g3-atr20-through-btc-4h-v1",
+  "actual_start": "2022-01-01 00:00:00+00:00",
+  "actual_end": "2026-08-31 20:00:00+00:00",
+  "n_bars": 10224,
+  "provider": "binance",
+  "source": "csv",
+  "symbol": "BTCUSDT",
+  "timeframe": "4h",
+  "exchange": "binanceusdm",
+  "thin": false
+}

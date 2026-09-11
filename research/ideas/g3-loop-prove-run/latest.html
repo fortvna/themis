@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/><title>Themis idea g3-loop-prove-run</title>
+<style>
+body { font-family: ui-sans-serif, system-ui, sans-serif; background:#0f1115; color:#e8eaed; margin:24px; max-width:960px; }
+.banner span { background:#1e2430; border:1px solid #2c3444; padding:4px 8px; border-radius:4px; font-size:12px; margin-right:6px; }
+table { border-collapse:collapse; margin:16px 0; }
+td,th { border:1px solid #2c3444; padding:6px 10px; font-size:13px; }
+pre { background:#161b22; padding:12px; overflow:auto; font-size:12px; }
+</style></head><body>
+<h1>G3: Prior-day ATR, lines at -33% and +33%, does price react</h1>
+<div class="banner"><span>thin: false</span><span>short_window: false</span><span>execution_ready: false</span><span>kept: false</span><span>ask / path stats</span><span>not pnl</span></div>
+<p>binance BTCUSDT 4h</p>
+<h2>Rival rates from run folders</h2>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 192" width="640" height="192">
+<rect width="100%" height="100%" fill="#0f1115"/>
+<text x="12" y="36" fill="#c8cdd8" font-size="12" font-family="ui-sans-serif,system-ui">g3-atr14-through-btc-4h-v1</text>
+<rect x="220" y="20" width="175.9" height="22" fill="#5b8def" rx="3"/>
+<line x1="384.8" y1="31.0" x2="407.1" y2="31.0" stroke="#e8eaed" stroke-width="1.5"/>
+<line x1="384.8" y1="26.0" x2="384.8" y2="36.0" stroke="#e8eaed" stroke-width="1.5"/>
+<line x1="407.1" y1="26.0" x2="407.1" y2="36.0" stroke="#e8eaed" stroke-width="1.5"/>
+<text x="403.9" y="36" fill="#e8eaed" font-size="12" font-family="ui-sans-serif,system-ui">51.7% ± 3.3%</text>
+<text x="12" y="70" fill="#c8cdd8" font-size="12" font-family="ui-sans-serif,system-ui">g3-atr20-through-btc-4h-v1</text>
+<rect x="220" y="54" width="176.7" height="22" fill="#5b8def" rx="3"/>
+<line x1="385.5" y1="65.0" x2="408.0" y2="65.0" stroke="#e8eaed" stroke-width="1.5"/>
+<line x1="385.5" y1="60.0" x2="385.5" y2="70.0" stroke="#e8eaed" stroke-width="1.5"/>
+<line x1="408.0" y1="60.0" x2="408.0" y2="70.0" stroke="#e8eaed" stroke-width="1.5"/>
+<text x="404.7" y="70" fill="#e8eaed" font-size="12" font-family="ui-sans-serif,system-ui">52.0% ± 3.3%</text>
+<text x="12" y="104" fill="#c8cdd8" font-size="12" font-family="ui-sans-serif,system-ui">g3-atr14-half-btc-4h-v1</text>
+<rect x="220" y="88" width="106.6" height="22" fill="#5b8def" rx="3"/>
+<line x1="316.3" y1="99.0" x2="336.9" y2="99.0" stroke="#e8eaed" stroke-width="1.5"/>
+<line x1="316.3" y1="94.0" x2="316.3" y2="104.0" stroke="#e8eaed" stroke-width="1.5"/>
+<line x1="336.9" y1="94.0" x2="336.9" y2="104.0" stroke="#e8eaed" stroke-width="1.5"/>
+<text x="334.6" y="104" fill="#e8eaed" font-size="12" font-family="ui-sans-serif,system-ui">31.4% ± 3.0%</text>
+<text x="12" y="138" fill="#c8cdd8" font-size="12" font-family="ui-sans-serif,system-ui">g3-atr20-half-btc-4h-v1</text>
+<rect x="220" y="122" width="112.1" height="22" fill="#5b8def" rx="3"/>
+<line x1="321.5" y1="133.0" x2="342.6" y2="133.0" stroke="#e8eaed" stroke-width="1.5"/>
+<line x1="321.5" y1="128.0" x2="321.5" y2="138.0" stroke="#e8eaed" stroke-width="1.5"/>
+<line x1="342.6" y1="128.0" x2="342.6" y2="138.0" stroke="#e8eaed" stroke-width="1.5"/>
+<text x="340.1" y="138" fill="#e8eaed" font-size="12" font-family="ui-sans-serif,system-ui">33.0% ± 3.1%</text>
+</svg>
+<table><thead><tr><th>spec</th><th>n</th><th>rates (folder)</th><th>folder</th></tr></thead>
+<tbody><tr><td>g3-atr14-through-btc-4h-v1</td><td>1690</td><td>react_plus=51.7% ± 3.3%; react_minus=53.8% ± 3.3%</td><td><code>g3-atr14-through-btc-4h-v1</code></td></tr><tr><td>g3-atr20-through-btc-4h-v1</td><td>1684</td><td>react_plus=52.0% ± 3.3%; react_minus=53.7% ± 3.3%</td><td><code>g3-atr20-through-btc-4h-v1</code></td></tr><tr><td>g3-atr14-half-btc-4h-v1</td><td>1690</td><td>react_plus=31.4% ± 3.0%; react_minus=34.2% ± 3.1%</td><td><code>g3-atr14-half-btc-4h-v1</code></td></tr><tr><td>g3-atr20-half-btc-4h-v1</td><td>1684</td><td>react_plus=33.0% ± 3.1%; react_minus=33.7% ± 3.1%</td><td><code>g3-atr20-half-btc-4h-v1</code></td></tr></tbody></table>
+<p>Quote only these folders. A rate is not return. Screen is not kept.</p>
+</body></html>

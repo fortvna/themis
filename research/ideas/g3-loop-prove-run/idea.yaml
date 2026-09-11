@@ -1,0 +1,36 @@
+schema: themis.idea.v1
+slug: g3-loop-prove-run
+title: 'G3: Prior-day ATR, lines at -33% and +33%, does price react'
+english_origin: Prior-day ATR, lines at -33% and +33%, does price react
+created_utc: '2026-09-11T06:49:57Z'
+instrument:
+  provider: binance
+  symbol: BTCUSDT
+  timeframe: 4h
+  exchange: binanceusdm
+current:
+  version: 1
+  spec_ids: &id001
+  - g3-atr14-through-btc-4h-v1
+  - g3-atr20-through-btc-4h-v1
+  - g3-atr14-half-btc-4h-v1
+  - g3-atr20-half-btc-4h-v1
+  job: research/jobs/20260911T064957Z-g3/job.yaml
+versions:
+- version: 1
+  english: Prior-day ATR, lines at -33% and +33%, does price react
+  parent: null
+  named:
+    retrace_pct: 0.33
+  spec_ids: *id001
+  job: research/jobs/20260911T064957Z-g3/job.yaml
+  runs:
+  - research/ideas/g3-loop-prove-run/runs/g3-atr14-through-btc-4h-v1
+  - research/ideas/g3-loop-prove-run/runs/g3-atr20-through-btc-4h-v1
+  - research/ideas/g3-loop-prove-run/runs/g3-atr14-half-btc-4h-v1
+  - research/ideas/g3-loop-prove-run/runs/g3-atr20-half-btc-4h-v1
+  screen: weak
+  screen_note: ask only. rates are outcomes, not edge. not pnl.
+named:
+  retrace_pct: 0.33
+case_id: G3
