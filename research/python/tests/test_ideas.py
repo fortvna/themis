@@ -407,6 +407,165 @@ def test_skill_file_present():
     assert "/themis-loop" in text
 
 
+def test_live_system_is_spec_prompt_or_superset():
+    from themis.live import LIVE_SYSTEM
+
+    root = Path(__file__).resolve().parents[3]
+    spec = (root / "docs" / "open-spec.md").read_text(encoding="utf-8")
+    marker = "## 20. Compiler prompt (Themis)"
+    chunk = spec[spec.find(marker) :]
+    start = chunk.find("```\n") + 4
+    end = chunk.find("\n```", start)
+    prompt = chunk[start:end]
+    assert prompt, "open-spec §20 prompt missing"
+    assert prompt in LIVE_SYSTEM
+    for needle in (
+        "idea.slug",
+        "knowable at i+n",
+        "next_open",
+        "UNNAMED",
+        "You do not invent n, rates, pnl",
+        "low + 1 ATR",
+    ):
+        assert needle in LIVE_SYSTEM
+
+
+def test_live_compile_does_not_invent_low_minus_atr(monkeypatch):
+    """ADR: materialize must not inject low-ATR when the model omits rules.stop."""
+    payload = {
+        "schema": "themis.job.v1",
+        "questions": [
+            {
+                "id": "xau_1h_n5",
+                "kind": "question",
+                "fractal_n": 5,
+                "condition": [{"kind": "retracement_zone"}],
+            },
+            {
+                "id": "xau_1h_n3",
+                "kind": "question",
+                "fractal_n": 3,
+                "condition": [{"kind": "retracement_zone"}],
+            },
+        ],
+        "strategies": [{"id": "xau_1h_named", "kind": "strategy"}],
+    }
+
+    monkeypatch.setattr("themis.auth.require_login", lambda *_a, **_k: None)
+    monkeypatch.setattr("themis.compiler.auth.require_login", lambda *_a, **_k: None)
+    monkeypatch.setattr("themis.live.auth.grok_complete", lambda *_a, **_k: json.dumps(payload))
+
+    from themis.compiler import compile_english
+    from themis.named import AMIR_H1_ENGLISH
+
+    gold = {
+        "provider": "binance",
+        "symbol": "XAUUSDT",
+        "timeframe": "1h",
+        "exchange": "binanceusdm",
+    }
+    job = compile_english(AMIR_H1_ENGLISH, gold, backend="xai", write=False)
+    assert job["status"] == "ok"
+    blob = json.dumps(job).replace("\u2212", "-")
+    assert "low - ATR" not in blob
+    for s in job.get("strategies") or []:
+        stop = str((s.get("rules") or {}).get("stop") or "")
+        assert "+" in stop
+        assert "low -" not in stop.replace("\u2212", "-")
+
+
+def test_overlay_named_tolerates_non_dict_condition():
+    from themis.named import overlay_named
+
+    named = {"retrace_pct": 0.33}
+    spec = {"id": "g3-odd", "kind": "question", "condition": ["atr_levels", "33%"]}
+    overlay_named(named, spec)
+    assert spec["pct_low"] == 0.33
+    assert spec["condition"] == ["atr_levels", "33%"]
+    spec2 = {
+        "id": "g3-map",
+        "kind": "question",
+        "condition": {"kind": "retracement_zone", "pct_low": 0.5},
+    }
+    overlay_named(named, spec2)
+    assert spec2["condition"][0]["pct_low"] == 0.33
+
+
+def test_live_g3_does_not_force_swing_retrace(monkeypatch):
+    payload = {
+        "schema": "themis.job.v1",
+        "questions": [
+            {
+                "id": "g3-a",
+                "kind": "question",
+                "measure": "atr_react",
+                "atr_n": 14,
+                "react": "through",
+                "condition": [{"kind": "atr_levels", "atr_n": 14, "pct": 0.33}],
+            },
+            {
+                "id": "g3-b",
+                "kind": "question",
+                "measure": "atr_react",
+                "atr_n": 20,
+                "react": "through",
+                "condition": [{"kind": "atr_levels", "atr_n": 20, "pct": 0.33}],
+            },
+        ],
+        "strategies": [],
+    }
+    monkeypatch.setattr("themis.auth.require_login", lambda *_a, **_k: None)
+    monkeypatch.setattr("themis.compiler.auth.require_login", lambda *_a, **_k: None)
+    monkeypatch.setattr("themis.live.auth.grok_complete", lambda *_a, **_k: json.dumps(payload))
+    from themis.compiler import compile_english
+
+    job = compile_english(
+        "Prior-day ATR, lines at -33% and +33%, does price react",
+        SERIES,
+        backend="xai",
+        write=False,
+    )
+    assert job["status"] == "ok"
+    for q in job.get("questions") or []:
+        assert q.get("measure") == "atr_react"
+
+
+def test_live_prose_condition_refuses_no_mock_fallback(monkeypatch):
+    payload = {
+        "schema": "themis.job.v1",
+        "questions": [
+            {
+                "id": "g3-prose-a",
+                "kind": "question",
+                "condition": "prior_day_atr lines at +/- 0.33",
+                "outcome": "touch is a reaction",
+            },
+            {
+                "id": "g3-prose-b",
+                "kind": "question",
+                "condition": "same lines, swing confirmation",
+                "outcome": "swing touch",
+            },
+        ],
+        "strategies": [],
+    }
+    monkeypatch.setattr("themis.auth.require_login", lambda *_a, **_k: None)
+    monkeypatch.setattr("themis.compiler.auth.require_login", lambda *_a, **_k: None)
+    monkeypatch.setattr("themis.live.auth.grok_complete", lambda *_a, **_k: json.dumps(payload))
+    from themis.compiler import CompileError, compile_english
+
+    with pytest.raises(CompileError) as ctx:
+        compile_english(
+            "Prior-day ATR, lines at -33% and +33%, does price react",
+            SERIES,
+            backend="xai",
+            write=False,
+        )
+    msg = str(ctx.value).lower()
+    assert "no fallback" in msg
+    assert "measure" in msg or "condition" in msg
+
+
 def test_write_idea_bundle_generic_rates(tmp_path: Path):
     (tmp_path / "docs").mkdir()
     (tmp_path / "docs" / "open-spec.md").write_text("# stub\n")
@@ -533,6 +692,8 @@ def test_write_idea_bundle_includes_g3_react_rates(tmp_path: Path):
     html = written["html"].read_text()
     assert "react_plus=41.2%" in html
     assert "react_minus=45.5%" in html
+    assert "react_plus=41.2% ± 3.4%" in html
+    assert "short_window:" in html
     assert "BTCUSDT" in html
     nb = written["ipynb"].read_text()
     assert "react_plus" in nb

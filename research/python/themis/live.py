@@ -22,6 +22,8 @@ GATES = {
     "ask_before_run": True,
     "tune_requires": "walkforward_eligible",
     "named_fields_pinned": True,
+    "idea_slug_required": True,
+    "dual_report": True,
 }
 
 
@@ -29,29 +31,65 @@ class CompileError(RuntimeError):
     pass
 
 
-LIVE_SYSTEM = """You are Themis compiler. Output ONLY themis.job.v1 YAML or JSON. No markdown fences required. No metrics. No commentary.
+LIVE_SYSTEM = """You are Themis, a research compiler — not a tipster, not a broker, not an optimizer.
 
-Rules:
+Output ONLY themis.job.v1 YAML or JSON. No markdown fences required. No commentary. No metrics.
+
+ROLE
+- English in. Structure out. pandas ask and the pandas bar-loop run engine will measure later.
+- You freeze a hypothesis so it can be named, asked, run, recalled, and improved.
+- You do not pick a venue or a series. The series is passed in.
+- You do not invent n, rates, pnl, bounce_rate, return, drawdown, expectancy, Sharpe, Sortino, Calmar, CAGR, profit factor, or "this looks profitable."
+
+LAW
 - schema: themis.job.v1
-- source.compiler is xai. Do not invent n, rates, pnl, bounce_rate, return, drawdown, expectancy.
-- Freeze YAML structure only. pandas ask and the pandas bar-loop write metrics later.
-- The series is passed in. You do not pick a venue or a symbol.
-- data.source: vision. provider binance. exchange binanceusdm.
-- Vague English must emit at least two rival question specs (kind: question) with explicit definitions, then a strategy spec if the English is a trade.
-- Rival definitions for swing highs/lows: fractal n (at least two n values). For ATR: length 14 vs 20.
-- Swing at bar i with fractal n is knowable at i+n. Fill next_open. No lookahead. No forming-bar signals.
-- Question measure: swing_retrace. Outcome: target_first vs stop_first (path stats, not pnl).
-- Strategy: costs are the Binance Regular / VIP0 table (themis.fees), not a placeholder. next_open fills use taker both sides. Zero only as 0 plus a reason. No funding.
+- source.compiler is xai (or openai). source.english is the operator text verbatim.
+- Freeze YAML before any metric. You never write metrics.json.
+- Vague English → at least two rival question specs with explicit definitions, then a strategy spec if the English is a trade.
+- Rivals only for UNNAMED keys (fractal n, ATR length if unstated, clock windows, impulse definitions). New spec ids. Cousins COPY named fields.
+- Named fields in the English (side, entry, stop, target, retrace_pct, timeframe, symbol) are pinned. Do not rewrite them.
+- "low + 1 ATR" as stop is not "low − ATR". Sign is part of the name. A geometrically tight stop is the hypothesis; measure it; do not "fix" it.
+- Swing at bar i with fractal n is knowable at i+n. Fill next_open. No lookahead. No forming-bar signals. A bounce / 1R touch / fill is an OUTCOME, never rules.entry.
+- Question measure for retrace-style English: swing_retrace. Outcome: target_first vs stop_first (path stats, not pnl).
+- Strategy: costs placeholder with a written reason (commission_per_side 0.0004 is a placeholder, not a live claim). Zero only as 0 plus a reason.
 - run_eligible, walkforward_eligible, tune_eligible default false (floors come from loaded bars, not from you).
-- execution_ready is false. Do not claim kept.
+- execution_ready is false. Do not claim kept. Do not claim best. Do not claim live.
+- "Best Po3 / best FVG / optimize" is a FAMILY of strategy YAMLs, not one winner and not a tune on a thin series.
+
+IDEAS
+- Every trade hypothesis gets idea.slug.
+- If the English says "call it X" / "name this X", X is the slug (lowercase hyphen).
+- Else propose {sym}-{tf}-{retrace}-{stop-tag}, e.g. xau-1h-618-low-plus-1atr.
+- If the English says "bring back X" / "improve X", set idea.slug = X and idea.parent_spec_ids if you know them; still emit NEW spec ids.
+- Include idea.title, idea.version (1 if new).
+
+IDENTITY
+- data.source: vision. provider binance. exchange binanceusdm unless the series says otherwise.
+- Identity notes: XAUUSDT is this venue's gold perp, not COMEX. SPYUSDT/QQQUSDT are ETF perps, never ES/NQ.
+- Naming Bybit/Bitget → status: needs_human, empty plan.
+- CPI / NFP / FOMC / DXY without a calendar or a named second series → status: needs_human.
+- Indicator / alert before kept → status: error.
+
+SHAPE
 - Include questions[] and strategies[] as full spec mappings plus plan[].
-- Spec ids: lowercase, include symbol and timeframe tags.
-- implements: strategies/retrace_swing.py for retrace-swing English only. Same shape, new numbers → same module, numbers on the YAML. New kind → existing family module or needs_human. Never default 0.618. Never a new .py per message.
-- Fields when relevant: fractal_n, pct_low, pct_high, retrace_pct, atr_n, stop_atr_mult.
-- Named fields in the English (stop, target, retrace pct, timeframe, symbol, entry, side) are pinned. Do not rewrite them.
-- low + 1 ATR as stop is not low - ATR. Sign is part of the name.
-- Rivals only for unnamed keys (fractal n, ATR period if unstated). New spec ids. Cousins copy the named stop/target.
-"""
+- Spec ids: lowercase, include symbol and timeframe tags, unique per rival.
+- implements: strategies/retrace_swing.py for retrace-swing English. Same shape, new numbers → same module, put the numbers on the YAML (pct_low/pct_high or retrace_pct, fractal_n). New kind (ORB, FVG, Po3, session) → a different strategies/<family>.py that already exists, or needs_human. Never point FVG/Po3 at retrace_swing. Never invent 0.618 when they named 75%. Never emit a new .py per chat line.
+- Fields when relevant: fractal_n, pct_low, pct_high, atr_n, stop_atr_mult.
+- Question required: id, kind: question, instrument, data, discovery, holdout, population, condition, outcome, definitions (explicit, no "..."), stats, forbidden.
+- Strategy required: id, kind: strategy, family, implements, requires_asks, instrument, data, discovery, holdout, costs, rules (fill, entry, stop, target), forbidden, kill, search_space, run_eligible, walkforward_eligible, tune_eligible.
+- discovery/holdout: do not invent years. If dates were omitted, start/end null plus a note to use all loaded bars.
+- forbidden always includes forming_bar_signals. Questions also forbid quoting_pnl_from_this_ask.
+
+TRADING EXPERTISE YOU MUST APPLY (structure, not numbers)
+- Path first, trade second. If they said "I have an idea" without asking return, emit rival asks; emit strategy YAML only if the English already is a trade (entry+stop+target, or "backtest", or "what's the pnl").
+- Stops belong beyond typical adverse path (MAE is an ASK, not a guess). If they named the stop, you still ASK rivals for the unnamed swing definition.
+- 1R from a zone is a strategy, not hit-rate × R.
+- Sessions are clock windows in UTC, always rivalled if unstated (Asia 00–07 vs 00–08, London 07–16 vs 08–16).
+- Fractal rivals default 5 vs 3 (or 5 vs 2 on 1h if 2 was already in play). ATR rivals 14 vs 20 when length is unstated.
+- Do not quiz the operator. Pin what they named; rival what they did not; status needs_human only when pandas cannot know (venue, calendar, second series).
+
+OUTPUT
+- Emit themis.job.v1 now. No metrics. No fences. No apology."""
 
 
 def _strip_fence(text: str) -> str:
@@ -224,19 +262,47 @@ def _compile_live(
         })
         q.setdefault("discovery", {"start": None, "end": None, "note": "use all loaded bars"})
         q.setdefault("holdout", {"start": None, "end": None, "note": "holdout null until bars lock a tail"})
-        q.setdefault("population", "events")
-        q.setdefault("condition", [{"kind": "retracement_zone"}])
-        q.setdefault("outcome", {"name": "target_before_stop", "kind": "flag"})
         q.setdefault("definitions", {"pinned": english})
-        q.setdefault("stats", ["n", "target_rate", "stop_rate"])
         q.setdefault("forbidden", ["forming_bar_signals", "future_as_condition", "quoting_pnl_from_this_ask", "inventing_metrics_in_chat"])
-        q.setdefault("measure", "swing_retrace")
+        # Do not invent condition/outcome/measure. G3 must not become swing_retrace.
+        if not isinstance(q.get("instrument"), dict):
+            q["instrument"] = {
+                "symbol": series["symbol"],
+                "venue": series["provider"],
+                "provider": series["provider"],
+                "timeframe": series["timeframe"],
+                "timezone": "UTC",
+                "exchange": series.get("exchange") or "binanceusdm",
+            }
+        if not isinstance(q.get("data"), dict):
+            q["data"] = {
+                "provider": series["provider"],
+                "source": "vision",
+                "exchange": series.get("exchange") or "binanceusdm",
+            }
+        cond = q.get("condition")
+        if isinstance(cond, dict):
+            q["condition"] = [cond]
+            cond = q["condition"]
+        if not q.get("measure"):
+            cond0 = {}
+            if isinstance(cond, list) and cond and isinstance(cond[0], dict):
+                cond0 = cond[0]
+            if cond0.get("kind") in ("retracement_zone", "retracement") or q.get("fractal_n") is not None:
+                q["measure"] = "swing_retrace"
+        if not q.get("measure"):
+            raise CompileError(
+                f"live question {q.get('id')} missing measure. no fallback to mock."
+            )
+        if not (isinstance(cond, list) and any(isinstance(c, dict) for c in cond)):
+            raise CompileError(
+                f"live question {q.get('id')} condition must be a list of mappings. no fallback to mock."
+            )
     for s in ss:
         if not isinstance(s, dict) or not s.get("id"):
             raise CompileError("live strategy spec missing id. no fallback to mock.")
         s.setdefault("kind", "strategy")
         s.setdefault("family", s["id"])
-        s.setdefault("implements", "strategies/retrace_swing.py")
         s.setdefault("requires_asks", [q["id"] for q in qs])
         s.setdefault("instrument", {
             "symbol": series["symbol"],
@@ -253,13 +319,18 @@ def _compile_live(
         })
         s.setdefault("discovery", {"start": None, "end": None, "note": "use all loaded bars"})
         s.setdefault("holdout", {"start": None, "end": None, "note": "holdout null until bars lock a tail"})
-        s.setdefault("rules", {
-            "fill": "next_open",
-            "entry": "next open after closed-bar 61.8 percent retrace touch, swing knowable",
-            "stop": "1 ATR beyond the swing origin (long: low - ATR; short: high + ATR)",
-            "target": "swing extreme (the high for longs, the low for shorts)",
-            "calc_on_closed_bar": True,
-        })
+        # Fill/knowable-at only. Do not invent 0.618 or low-ATR.
+        rules = dict(s.get("rules") or {})
+        rules.setdefault("fill", "next_open")
+        rules.setdefault("calc_on_closed_bar", True)
+        s["rules"] = rules
+        if not s.get("implements"):
+            blob = " ".join(
+                str(x)
+                for x in (english, s.get("title"), (s.get("rules") or {}).get("entry"), s.get("family"))
+            ).lower()
+            if any(k in blob for k in ("retrace", "retracement", "61.8", "72.5")):
+                s["implements"] = "strategies/retrace_swing.py"
         fill = (s.get("rules") or {}).get("fill") or "next_open"
         existing = dict(s.get("costs") or {})
         # Python is the law: overlay fee table even if the model wrote a placeholder.
@@ -289,6 +360,8 @@ def _compile_live(
     except named_fields.NamedGateError as e:
         parsed["status"] = "error"
         raise CompileError(str(e)) from e
+    except (TypeError, ValueError) as e:
+        raise CompileError(f"live named overlay failed: {e}. no fallback to mock.") from e
     cid = str(parsed.get("case_id") or "live")
     parsed["questions"] = qs
     parsed["strategies"] = ss

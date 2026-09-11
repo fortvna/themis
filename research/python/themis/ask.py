@@ -600,11 +600,15 @@ def measure(spec: dict[str, Any], series: SeriesLoad) -> tuple[dict[str, Any], p
             react_lo = touch_lo & ((d2.close - d2.low) >= 0.5 * d2.atr.shift(1).reindex(d2.index))
         n_hi = int(touch_hi.sum())
         n_lo = int(touch_lo.sum())
+        rp = round(float(react_hi[touch_hi].mean()), 4) if n_hi else None
+        rm = round(float(react_lo[touch_lo].mean()), 4) if n_lo else None
         table = d2[["open", "high", "low", "close", "atr", "line_hi", "line_lo"]].reset_index(names="ts")
         metrics.update({
             "n_days": int(len(d2)), "n_touch_plus33": n_hi, "n_touch_minus33": n_lo,
-            "react_plus": round(float(react_hi[touch_hi].mean()), 4) if n_hi else None,
-            "react_minus": round(float(react_lo[touch_lo].mean()), 4) if n_lo else None,
+            "react_plus": rp,
+            "react_minus": rm,
+            "react_plus_ci95": ci95(float(rp), n_hi) if rp is not None else None,
+            "react_minus_ci95": ci95(float(rm), n_lo) if rm is not None else None,
             "atr_n": n_atr, "react": react, "note": "condition knowable at prior daily close. not a trade.",
         })
         return _strip_pnl(metrics), table

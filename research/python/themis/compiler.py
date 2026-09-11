@@ -22,6 +22,8 @@ GATES = {
     "ask_before_run": True,
     "tune_requires": "walkforward_eligible",
     "named_fields_pinned": True,
+    "idea_slug_required": True,
+    "dual_report": True,
 }
 
 # §9 bank. path: ask | run | family | needs_human | error

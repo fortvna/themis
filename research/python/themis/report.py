@@ -111,7 +111,21 @@ def _bar_svg(rows: list[dict], *, value_key: str = "complete_rate", label_key: s
         parts.append(f'<rect x="{left}" y="{y}" width="{bw:.1f}" height="{bar_h}" fill="#5b8def" rx="3"/>')
         cap = f"{v:.1%}"
         if ci is not None:
-            cap += f" ± {float(ci):.1%}"
+            c = float(ci)
+            cap += f" ± {c:.1%}"
+            bar_max = w - left - 80
+            x0 = left + max(0.0, min(1.0, (v - c) / max_v)) * bar_max
+            x1 = left + max(0.0, min(1.0, (v + c) / max_v)) * bar_max
+            mid = y + bar_h / 2.0
+            parts.append(
+                f'<line x1="{x0:.1f}" y1="{mid:.1f}" x2="{x1:.1f}" y2="{mid:.1f}" stroke="#e8eaed" stroke-width="1.5"/>'
+            )
+            parts.append(
+                f'<line x1="{x0:.1f}" y1="{mid - 5:.1f}" x2="{x0:.1f}" y2="{mid + 5:.1f}" stroke="#e8eaed" stroke-width="1.5"/>'
+            )
+            parts.append(
+                f'<line x1="{x1:.1f}" y1="{mid - 5:.1f}" x2="{x1:.1f}" y2="{mid + 5:.1f}" stroke="#e8eaed" stroke-width="1.5"/>'
+            )
         parts.append(f'<text x="{left + bw + 8:.1f}" y="{y + 16}" fill="#e8eaed" font-size="12" font-family="ui-sans-serif,system-ui">{_esc(cap)}</text>')
     parts.append("</svg>")
     return "\n".join(parts)
@@ -265,6 +279,10 @@ def write_idea_html(slug: str, folders: list[Path], *, root: Path | None = None,
     else:
         identity = str(ident_obj or "")
     thin = any(r.get("thin") for r in rows)
+    short_window = any(
+        bool((r.get("meta") or {}).get("short_window") or (r.get("metrics") or {}).get("short_window"))
+        for r in rows
+    )
     if symbol.upper() == "XAUUSDT" and "COMEX" not in identity:
         identity = (identity + " Binance USD-M XAUUSDT perp, not COMEX.").strip()
     if symbol.upper() in {"SPYUSDT", "QQQUSDT"}:
@@ -279,7 +297,7 @@ td,th {{ border:1px solid #2c3444; padding:6px 10px; font-size:13px; }}
 pre {{ background:#161b22; padding:12px; overflow:auto; font-size:12px; }}
 </style></head><body>
 <h1>{_esc(title or slug)}</h1>
-<div class="banner"><span>thin: {str(thin).lower()}</span><span>execution_ready: false</span><span>kept: false</span><span>ask / path stats</span><span>not pnl</span></div>
+<div class="banner"><span>thin: {str(thin).lower()}</span><span>short_window: {str(short_window).lower()}</span><span>execution_ready: false</span><span>kept: false</span><span>ask / path stats</span><span>not pnl</span></div>
 <p>{_esc(identity)}</p>
 <h2>Rival rates from run folders</h2>
 {svg}

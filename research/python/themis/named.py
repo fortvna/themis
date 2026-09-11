@@ -250,10 +250,20 @@ def overlay_named(named: dict[str, Any], spec: dict[str, Any]) -> dict[str, Any]
     if pct is not None:
         spec["pct_low"] = pct
         spec["pct_high"] = pct_high if pct_high is not None else pct
+        raw_cond = spec.get("condition")
+        if isinstance(raw_cond, dict):
+            items = [raw_cond]
+        elif isinstance(raw_cond, list):
+            items = raw_cond
+        else:
+            items = []
         conds = []
-        for c in spec.get("condition") or []:
+        for c in items:
+            if not isinstance(c, dict):
+                conds.append(c)
+                continue
             c = dict(c)
-            if c.get("kind") == "retracement_zone":
+            if c.get("kind") in ("retracement_zone", "retracement"):
                 c["pct_low"] = pct
                 c["pct_high"] = pct_high if pct_high is not None else pct
             conds.append(c)
