@@ -1,0 +1,22 @@
+schema: fortvna.themis.idea.v0
+slug: herman-streak-failure-nq-1m
+metis_slug: strt-rherman-streak-failure-reversal
+orb_playbook_id: pb-streak-herman
+title: Streak Failure Reversal [Herman] — NQ 1m control
+status: research
+screen: continue
+screen_note: "needs_human — Themis binanceusdm cannot fetch NQ 1m. Control measure waits on Orb fortvna.tape.v0 / yahoo-databento bridge. Do not substitute QQQUSDT as NQ. Author Aug–Sep screenshot is marketing, not control."
+grounding: author-defaults-v1
+instruments:
+  - series_class: yahoo
+    symbol: NQ
+    timeframe: 1m
+    session: "09:45-12:00 ET arm/confirm; hard flat 16:00"
+    note: "Not Binance. Not QQQUSDT."
+pointers:
+  metis: research/strt-rherman-streak-failure-reversal.md
+  orb: pb-streak-herman
+  crucible: herman-streak-failure
+execution_ready: false
+asks: []
+runs: []
